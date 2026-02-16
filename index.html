@@ -2,6 +2,22 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <!-- 分享卡片 Open Graph -->
+    <meta property="og:title" content="盛兴崑给你拜年：过节别忘记喝水">
+    <meta property="og:description" content="🐴 新春饮水，福寿绵长。点开领取马年祝福，还能一键转发给朋友拜年💧">
+    <meta property="og:image" content="https://ericjbe.github.io/water-reminder/share-card.png">
+    <meta property="og:url" content="https://ericjbe.github.io/water-reminder/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="喝水了吗 · 马年祝福">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="盛兴崑给你拜年：过节别忘记喝水">
+    <meta name="twitter:description" content="🐴 新春饮水，福寿绵长。点开领取马年祝福，转发给朋友拜年💧">
+    <meta name="twitter:image" content="https://ericjbe.github.io/water-reminder/share-card.png">
+    <!-- 微信分享 -->
+    <meta itemprop="name" content="盛兴崑给你拜年：过节别忘记喝水">
+    <meta itemprop="description" content="点开收专属祝福，还能一键转发给朋友">
+    <meta itemprop="image" content="https://ericjbe.github.io/water-reminder/share-card.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title id="pageTitle">喝水了吗 | 分秒必争</title>
     
@@ -13,7 +29,6 @@
     <meta name="application-name" content="喝水了吗">
     <meta name="theme-color" content="#0a192f">
     <meta name="description" content="喝水了吗？智能喝水提醒，每天八杯水，健康一整年。水学知识+滴答时钟+语音助手，水若善出品。">
-    <meta property="og:title" content="喝水了吗 | 智能喝水提醒">
     <meta property="og:description" content="上善若水，分秒必争。每天八杯水，做自己的健康管理师。语音问水学，AI来回答。">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230a192f' width='100' height='100' rx='20'/><text x='50' y='68' font-size='55' text-anchor='middle'>💧</text></svg>">
@@ -351,7 +366,7 @@
                 <option value="ja">日本語</option>
                 <option value="ko">한국어</option>
             </select>
-            <button class="top-btn" onclick="openPanel('promoPanel')" data-i18n="promo">推广</button>
+            <button class="top-btn" onclick="openPanel('promoPanel')" data-i18n="promo">共享</button>
             <button class="top-btn" id="userBtn" onclick="openPanel('memberPanel')" data-i18n="login">登录</button>
         </div>
     </div>
@@ -461,7 +476,7 @@
 
     <div class="bottom-bar">
         <button class="nav-btn active"><span class="icon">🏠</span><span class="label" data-i18n="home">首页</span></button>
-        <button class="nav-btn" onclick="openPanel('promoPanel')"><span class="icon">📣</span><span class="label" data-i18n="promo">推广</span></button>
+        <button class="nav-btn" onclick="openPanel('promoPanel')"><span class="icon">📣</span><span class="label" data-i18n="promo">共享</span></button>
         <button class="nav-btn" onclick="openPanel('settingsPanel')"><span class="icon">⏰</span><span class="label" data-i18n="remind">提醒</span></button>
         <button class="nav-btn" onclick="openPanel('pointsPanel')"><span class="icon">🎁</span><span class="label" data-i18n="points">积分</span></button>
         <button class="nav-btn" onclick="openPanel('memberPanel')"><span class="icon">👤</span><span class="label" data-i18n="me">我的</span></button>
@@ -675,7 +690,7 @@
 
     <div class="panel" id="promoPanel">
         <button class="panel-close" onclick="closeAllPanels()">×</button>
-        <div class="panel-title">📣 <span data-i18n="promoCenter">推广中心</span></div>
+        <div class="panel-title">📣 <span data-i18n="promoCenter">共享中心</span></div>
         <div style="text-align:center;padding:16px;background:linear-gradient(135deg,rgba(255,215,0,0.12),rgba(255,0,110,0.08));border-radius:14px;margin-bottom:12px;">
             <div style="font-size:28px;">🐴🧧</div>
             <div style="font-size:16px;font-weight:bold;color:var(--gold);margin:6px 0;">新春快乐 · 喝水了吗？</div>
@@ -755,7 +770,7 @@
             </div>
             <div style="flex:1;text-align:center;padding:10px;background:rgba(6,255,165,0.06);border-radius:10px;">
                 <div style="font-size:18px;font-weight:bold;color:var(--success);" id="promoPoints">0</div>
-                <div style="font-size:9px;color:rgba(255,255,255,0.5);">推广积分</div>
+                <div style="font-size:9px;color:rgba(255,255,255,0.5);">共享积分</div>
             </div>
         </div>
         <div class="section-title">📅 <span data-i18n="monthlyCheckin">本月打卡</span></div>
@@ -1001,7 +1016,7 @@
     // ==================== 多语言系统 ====================
     const I18N = {
         zh: {
-            appName: '喝水了吗', slogan: '「一万年太久，分秒必争」', login: '登录', promo: '推广',
+            appName: '喝水了吗', slogan: '「一万年太久，分秒必争」', login: '登录', promo: '共享',
             dailyWisdom: '每日水语', copy: '复制', refresh: '换一条', streak: '连续', days: '天', points: '积分', checkin: '打卡',
             clickToAdd: '点击添加<br>图片/视频/文字', tickSound: '滴答声', classics: '经典', waterStudy: '水学', voice: '语音', care: '关怀', settings: '设置',
             drinkWater: '喝水提醒', drinkNow: '立即喝水', todayWater: '今日饮水', waterGoal: '目标2000ml',
@@ -1011,7 +1026,7 @@
             customizeCenter: '自定义钟表中心', uploadImage: '上传图片', uploadVideo: '上传视频', customText: '自定义文字', clickUpload: '点击上传', apply: '应用', resetDefault: '恢复默认',
             smartCare: '智能关怀', readContacts: '读取通讯录', contactsDesc: '授权后可快速查找并添加被关怀人，设置生日、纪念日等关怀提醒。', authorizeContacts: '授权读取通讯录',
             findCarePerson: '查找被关怀人', addedFriends: '已添加的关怀对象', manualAdd: '手动添加',
-            classics: '经典', fiveScriptures: '五经', waterCourse: '水学课程', socraticDialog: '苏格拉底式水学对话', promoCenter: '推广中心', myInviteCode: '我的邀请码', copyInviteLink: '复制邀请链接',
+            classics: '经典', fiveScriptures: '五经', waterCourse: '水学课程', socraticDialog: '苏格拉底式水学对话', promoCenter: '共享中心', myInviteCode: '我的邀请码', copyInviteLink: '复制邀请链接',
             pointsCenter: '积分中心', myPoints: '我的积分', monthlyCheckin: '本月打卡',
             loginRegister: '登录 / 注册', phone: '手机号', nickname: '昵称', password: '密码', upgradeVip: '升级VIP', logout: '退出登录',
             title: '标题', type: '类型', date: '日期', time: '时间', year: '年', month: '月', day: '日', hour: '时', minute: '分', second: '秒',
@@ -1153,7 +1168,7 @@
         navEls.forEach((el,i) => { if(nl[i]) el.textContent = nl[i]; });
         // 面板标题
         const panelTitles = {
-            zh:{remind:'⏰ 提醒管理',sound:'🔊 滴答声设置',theme:'🎨 主题风格',ad:'📢 广告管理',custom:'🎯 自定义钟表中心',care:'💝 智能关怀',classics:'📜 经典 / 五经',water:'🌊 水学研究院',promo:'🧧 推广中心',points:'🏆 积分中心',user:'👤 用户中心',fest:'🏮 春节祝福馆'},
+            zh:{remind:'⏰ 提醒管理',sound:'🔊 滴答声设置',theme:'🎨 主题风格',ad:'📢 广告管理',custom:'🎯 自定义钟表中心',care:'💝 智能关怀',classics:'📜 经典 / 五经',water:'🌊 水学研究院',promo:'🧧 共享中心',points:'🏆 积分中心',user:'👤 用户中心',fest:'🏮 春节祝福馆'},
             en:{remind:'⏰ Reminders',sound:'🔊 Tick Sound',theme:'🎨 Theme',ad:'📢 Ad Manager',custom:'🎯 Clock Center',care:'💝 Smart Care',classics:'📜 Classics',water:'🌊 Water Academy',promo:'🧧 Promotion',points:'🏆 Points',user:'👤 Profile',fest:'🏮 Festival Greetings'},
             ja:{remind:'⏰ 通知管理',sound:'🔊 チクタク設定',theme:'🎨 テーマ',ad:'📢 広告管理',custom:'🎯 時計カスタム',care:'💝 スマートケア',classics:'📜 経典',water:'🌊 水学院',promo:'🧧 プロモ',points:'🏆 ポイント',user:'👤 ユーザー',fest:'🏮 お正月'},
             ko:{remind:'⏰ 알림 관리',sound:'🔊 틱톡 설정',theme:'🎨 테마',ad:'📢 광고 관리',custom:'🎯 시계 커스텀',care:'💝 스마트 케어',classics:'📜 고전',water:'🌊 물 학원',promo:'🧧 프로모션',points:'🏆 포인트',user:'👤 프로필',fest:'🏮 새해 축하'},
