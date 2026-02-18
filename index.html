@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <!-- Google Analytics 4 数据统计 -->
-    <!-- 步骤：1.打开 https://analytics.google.com 注册 2.创建媒体资源 3.把G-XXXXXXXXX替换为你的测量ID -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXX"></script>
+    <!-- 步骤：1.打开 https://analytics.google.com 注册 2.创建媒体资源 3.把G-8BF63PNVGD替换为你的测量ID -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-8BF63PNVGD"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-      gtag('config', 'G-XXXXXXXXX');
+      gtag('config', 'G-8BF63PNVGD');
     </script>
     <!-- 分享卡片 Open Graph -->
     <meta property="og:title" content="盛兴崑给你拜年：过节别忘记喝水">
@@ -1603,6 +1603,32 @@
             last7 += (siteStats.dailyVisits[key] || 0);
         }
         
+        // ═══ 全局用户数据汇总（从localStorage读取） ═══
+        var allUsers = JSON.parse(localStorage.getItem('heshuileUsers') || '{}');
+        var userList = Object.values(allUsers);
+        var totalUsers = userList.length;
+        var paidUsers = userList.filter(function(u) { return u.level && u.level !== 'free'; }).length;
+        var freeUsers = totalUsers - paidUsers;
+        var trialUsers = 0;
+        userList.forEach(function(u) {
+            if (u.level === 'free' || !u.level) {
+                var ts = localStorage.getItem('heshuileTrialStart_' + u.phone);
+                if (ts) {
+                    var elapsed = Date.now() - parseInt(ts);
+                    if (elapsed < VIP_TRIAL_DAYS * 24*60*60*1000) trialUsers++;
+                }
+            }
+        });
+        
+        // 订单数据
+        var allOrders = JSON.parse(localStorage.getItem('heshuilePendingOrders') || '[]');
+        var pendingOrders = allOrders.filter(function(o){ return o.status === 'pending'; }).length;
+        var approvedOrders = allOrders.filter(function(o){ return o.status === 'approved'; }).length;
+        var totalRevenue = allOrders.filter(function(o){ return o.status === 'approved'; }).reduce(function(s,o){ return s + (parseFloat(o.amount)||0); }, 0);
+        
+        // 云端会员
+        var cloudMembers = JSON.parse(localStorage.getItem('heshuileCloudMembers') || '[]');
+        
         // 面板使用排行
         var panelRank = Object.entries(siteStats.panels || {}).sort(function(a,b){return b[1]-a[1]}).slice(0,8);
         var panelHtml = panelRank.map(function(p){ return '<div style="display:flex;justify-content:space-between;padding:3px 0;"><span>' + p[0].replace('Panel','') + '</span><span style="color:var(--gold);">' + p[1] + '次</span></div>'; }).join('');
@@ -1622,10 +1648,38 @@
                 + '</div>';
         }).join('') || '<div style="color:rgba(255,255,255,0.4);">暂无裂变数据</div>';
         
-        // 设备统计
-        var devices = siteStats.devices || [];
-        var mobileCount = devices.filter(function(d){ return /Mobile|Android|iPhone/i.test(d.ua); }).length;
-        var pcCount = devices.length - mobileCount;
+        // 最近注册用户
+        var recentUsers = userList.sort(function(a,b){ return (b.id||'').localeCompare(a.id||''); }).slice(0, 10);
+        var usersHtml = recentUsers.map(function(u){
+            var levelBadge = u.level === 'vip' ? '👑' : u.level === 'monthly' ? '⭐' : u.level === 'quarterly' ? '🌟' : u.level === 'enterprise' ? '🏢' : '🆓';
+            var phone = u.phone ? u.phone.substring(0,3) + '****' + u.phone.substring(7) : '未知';
+            return '<div style="font-size:10px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;">'
+                + '<span>' + levelBadge + ' ' + (u.name||'匿名') + '</span>'
+                + '<span style="color:rgba(255,255,255,0.4);">' + phone + '</span>'
+                + '</div>';
+        }).join('') || '暂无用户';
+        
+        // 每日访问趋势（最近7天）
+        var trendHtml = '';
+        var maxDayVisit = 1;
+        for (var i = 6; i >= 0; i--) {
+            var d = new Date(); d.setDate(d.getDate() - i);
+            var key = d.toISOString().slice(0,10);
+            var count = siteStats.dailyVisits[key] || 0;
+            if (count > maxDayVisit) maxDayVisit = count;
+        }
+        for (var i = 6; i >= 0; i--) {
+            var d = new Date(); d.setDate(d.getDate() - i);
+            var key = d.toISOString().slice(0,10);
+            var count = siteStats.dailyVisits[key] || 0;
+            var barW = Math.max(3, Math.round(count / maxDayVisit * 100));
+            var dateStr = (d.getMonth()+1) + '/' + d.getDate();
+            trendHtml += '<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">'
+                + '<span style="min-width:35px;font-size:10px;color:rgba(255,255,255,0.5);">' + dateStr + '</span>'
+                + '<div style="height:12px;width:' + barW + '%;background:linear-gradient(90deg,var(--primary),var(--gold));border-radius:6px;"></div>'
+                + '<span style="font-size:10px;color:var(--gold);">' + count + '</span>'
+                + '</div>';
+        }
         
         // 最近事件
         var recentEvents = (siteStats.events || []).slice(-15).reverse();
@@ -1638,78 +1692,132 @@
                 + '</div>';
         }).join('') || '暂无事件';
         
-        // 每日访问趋势（最近7天）
-        var trendHtml = '';
-        for (var i = 6; i >= 0; i--) {
-            var d = new Date(); d.setDate(d.getDate() - i);
-            var key = d.toISOString().slice(0,10);
-            var count = siteStats.dailyVisits[key] || 0;
-            var barW = Math.min(100, Math.max(5, count * 10));
-            var dateStr = (d.getMonth()+1) + '/' + d.getDate();
-            trendHtml += '<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">'
-                + '<span style="min-width:35px;font-size:10px;color:rgba(255,255,255,0.5);">' + dateStr + '</span>'
-                + '<div style="height:12px;width:' + barW + '%;background:linear-gradient(90deg,var(--primary),var(--gold));border-radius:6px;"></div>'
-                + '<span style="font-size:10px;color:var(--gold);">' + count + '</span>'
-                + '</div>';
-        }
-        
         var html = ''
             + '<div style="background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.2);border-radius:12px;padding:12px;margin-bottom:12px;">'
-            + '<div style="text-align:center;font-size:14px;font-weight:bold;color:var(--primary);margin-bottom:10px;">📊 数据看板</div>'
+            + '<div style="text-align:center;font-size:14px;font-weight:bold;color:var(--primary);margin-bottom:10px;">📊 管理员数据看板</div>'
             
-            // 核心数字
-            + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
+            // ═══ 用户概览（核心指标）═══
+            + '<div style="font-size:11px;color:var(--gold);margin-bottom:6px;font-weight:bold;">👥 用户概览</div>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:12px;">'
             + '<div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;">'
-            + '<div style="font-size:22px;font-weight:bold;color:var(--gold);">' + (siteStats.totalVisits||0) + '</div><div style="font-size:9px;color:rgba(255,255,255,0.5);">总访问</div></div>'
+            + '<div style="font-size:20px;font-weight:bold;color:var(--primary);">' + totalUsers + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">总注册</div></div>'
             + '<div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;">'
-            + '<div style="font-size:22px;font-weight:bold;color:var(--primary);">' + todayVisits + '</div><div style="font-size:9px;color:rgba(255,255,255,0.5);">今日访问</div></div>'
+            + '<div style="font-size:20px;font-weight:bold;color:var(--gold);">' + paidUsers + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">付费会员</div></div>'
             + '<div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;">'
-            + '<div style="font-size:22px;font-weight:bold;color:var(--success);">' + viralTotal + '</div><div style="font-size:9px;color:rgba(255,255,255,0.5);">裂变打开</div></div>'
+            + '<div style="font-size:20px;font-weight:bold;color:#ff9800;">' + trialUsers + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">试用中</div></div>'
+            + '<div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;">'
+            + '<div style="font-size:20px;font-weight:bold;color:rgba(255,255,255,0.5);">' + freeUsers + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">免费</div></div>'
             + '</div>'
             
-            + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
+            // ═══ 收入概览 ═══
+            + '<div style="font-size:11px;color:var(--gold);margin-bottom:6px;font-weight:bold;">💰 收入概览</div>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;">'
+            + '<div style="text-align:center;background:rgba(255,215,0,0.05);border:1px solid rgba(255,215,0,0.15);border-radius:8px;padding:8px;">'
+            + '<div style="font-size:18px;font-weight:bold;color:var(--gold);">¥' + totalRevenue.toFixed(0) + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">总收入</div></div>'
+            + '<div style="text-align:center;background:rgba(255,152,0,0.05);border:1px solid rgba(255,152,0,0.15);border-radius:8px;padding:8px;">'
+            + '<div style="font-size:18px;font-weight:bold;color:#ff9800;">' + pendingOrders + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">待审核</div></div>'
+            + '<div style="text-align:center;background:rgba(0,200,83,0.05);border:1px solid rgba(0,200,83,0.15);border-radius:8px;padding:8px;">'
+            + '<div style="font-size:18px;font-weight:bold;color:var(--success);">' + approvedOrders + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">已通过</div></div>'
+            + '</div>'
+            
+            // ═══ 转化漏斗 ═══
+            + '<div style="font-size:11px;color:var(--gold);margin-bottom:6px;font-weight:bold;">🔄 转化漏斗</div>'
+            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:10px;margin-bottom:12px;">'
+            + buildFunnelBar('访问', siteStats.totalVisits||0, siteStats.totalVisits||1)
+            + buildFunnelBar('注册', totalUsers, siteStats.totalVisits||1)
+            + buildFunnelBar('试用', trialUsers + paidUsers, siteStats.totalVisits||1)
+            + buildFunnelBar('付费', paidUsers, siteStats.totalVisits||1)
+            + '</div>'
+            
+            // ═══ 流量数据 ═══
+            + '<div style="font-size:11px;color:var(--gold);margin-bottom:6px;font-weight:bold;">📈 流量数据</div>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;">'
             + '<div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;">'
-            + '<div style="font-size:22px;font-weight:bold;color:var(--accent);">' + shareTotal + '</div><div style="font-size:9px;color:rgba(255,255,255,0.5);">分享次数</div></div>'
+            + '<div style="font-size:18px;font-weight:bold;color:var(--primary);">' + (siteStats.totalVisits||0) + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">总访问</div></div>'
             + '<div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;">'
-            + '<div style="font-size:22px;font-weight:bold;color:#ff9800;">' + last7 + '</div><div style="font-size:9px;color:rgba(255,255,255,0.5);">7日访问</div></div>'
+            + '<div style="font-size:18px;font-weight:bold;color:var(--success);">' + todayVisits + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">今日</div></div>'
             + '<div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;">'
-            + '<div style="font-size:16px;font-weight:bold;color:var(--water);">' + mobileCount + '/' + pcCount + '</div><div style="font-size:9px;color:rgba(255,255,255,0.5);">手机/电脑</div></div>'
+            + '<div style="font-size:18px;font-weight:bold;color:#ff9800;">' + last7 + '</div><div style="font-size:8px;color:rgba(255,255,255,0.5);">7日</div></div>'
             + '</div>'
             
             // 7日趋势
-            + '<div style="font-size:11px;color:var(--primary);margin-bottom:5px;">📈 7日访问趋势</div>'
+            + '<div style="font-size:10px;color:var(--primary);margin-bottom:4px;">📊 7日趋势</div>'
             + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:10px;">' + trendHtml + '</div>'
             
-            // 功能使用排行
-            + '<div style="font-size:11px;color:var(--primary);margin-bottom:5px;">🏆 功能使用排行</div>'
-            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:10px;font-size:11px;">' + (panelHtml || '暂无数据') + '</div>'
+            // 裂变 + 分享
+            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">'
+            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;">'
+            + '<div style="font-size:10px;color:var(--primary);margin-bottom:4px;">🔗 裂变 ' + viralTotal + '次</div>' + viralHtml + '</div>'
+            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;">'
+            + '<div style="font-size:10px;color:var(--primary);margin-bottom:4px;">📤 分享 ' + shareTotal + '次</div>'
+            + '<div style="font-size:10px;color:rgba(255,255,255,0.6);">' + shareMethods + '</div></div>'
+            + '</div>'
             
-            // 分享渠道
-            + '<div style="font-size:11px;color:var(--primary);margin-bottom:5px;">📤 分享统计</div>'
-            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.7);">' + shareMethods + '</div>'
+            // 最近注册用户
+            + '<div style="font-size:10px;color:var(--primary);margin-bottom:4px;">👤 最近注册（' + totalUsers + '人）</div>'
+            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:10px;max-height:120px;overflow-y:auto;">' + usersHtml + '</div>'
             
-            // 裂变来源
-            + '<div style="font-size:11px;color:var(--primary);margin-bottom:5px;">🔗 裂变来源（最近10条）</div>'
-            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:10px;">' + viralHtml + '</div>'
+            // 功能使用 + 事件
+            + '<div style="font-size:10px;color:var(--primary);margin-bottom:4px;">🏆 功能排行</div>'
+            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:10px;font-size:11px;">' + (panelHtml || '暂无') + '</div>'
             
-            // 事件日志
-            + '<div style="font-size:11px;color:var(--primary);margin-bottom:5px;">📋 最近事件</div>'
-            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:10px;max-height:150px;overflow-y:auto;">' + eventsHtml + '</div>'
+            + '<div style="font-size:10px;color:var(--primary);margin-bottom:4px;">📋 最近事件</div>'
+            + '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:10px;max-height:120px;overflow-y:auto;">' + eventsHtml + '</div>'
             
-            // 导出和清除
-            + '<div style="display:flex;gap:6px;">'
+            // 操作按钮
+            + '<div style="display:flex;gap:6px;margin-bottom:10px;">'
             + '<button class="btn btn-outline" style="flex:1;font-size:10px;" onclick="exportStats()">📥 导出数据</button>'
+            + '<button class="btn btn-outline" style="flex:1;font-size:10px;" onclick="exportAllUserData()">📥 导出用户表</button>'
             + '<button class="btn btn-outline" style="flex:1;font-size:10px;" onclick="clearAllStats()">🗑️ 清除</button>'
             + '</div>'
             
-            // GA4提示
-            + '<div style="margin-top:10px;padding:8px;background:rgba(255,215,0,0.05);border:1px solid rgba(255,215,0,0.2);border-radius:8px;font-size:9px;color:rgba(255,255,255,0.5);">'
-            + '💡 以上是本设备数据。如需查看所有用户汇总数据，请登录 <a href="https://analytics.google.com" target="_blank" style="color:var(--gold);">Google Analytics</a> 查看（需先配置测量ID）'
+            // GA4 配置提醒
+            + '<div style="padding:10px;background:rgba(0,200,83,0.08);border:1px solid rgba(0,200,83,0.25);border-radius:8px;font-size:10px;">'
+            + '<div style="color:var(--success);font-weight:bold;margin-bottom:4px;">✅ Google Analytics 已配置（G-8BF63PNVGD）</div>'
+            + '<div style="color:rgba(255,255,255,0.6);line-height:1.5;">所有用户的访问、点击、付费事件正在自动上报。<br>'
+            + '查看全量数据 → <a href="https://analytics.google.com" target="_blank" style="color:var(--gold);">打开 Google Analytics</a><br>'
+            + '<span style="color:rgba(255,255,255,0.4);">注：上方用户/订单数据仅限本设备，GA4可看全部设备</span></div>'
             + '</div>'
             
             + '</div>';
         
         document.getElementById('statsContainer').innerHTML = html;
+    }
+    
+    // 转化漏斗条形图
+    function buildFunnelBar(label, count, total) {
+        var pct = total > 0 ? Math.round(count / total * 100) : 0;
+        var barW = Math.max(3, pct);
+        return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+            + '<span style="min-width:28px;font-size:9px;color:rgba(255,255,255,0.6);">' + label + '</span>'
+            + '<div style="flex:1;height:14px;background:rgba(255,255,255,0.05);border-radius:7px;overflow:hidden;">'
+            + '<div style="height:100%;width:' + barW + '%;background:linear-gradient(90deg,var(--primary),var(--gold));border-radius:7px;transition:width 0.5s;"></div></div>'
+            + '<span style="min-width:50px;text-align:right;font-size:9px;color:var(--gold);">' + count + ' (' + pct + '%)</span>'
+            + '</div>';
+    }
+    
+    // 导出用户数据为CSV
+    function exportAllUserData() {
+        var allUsers = JSON.parse(localStorage.getItem('heshuileUsers') || '{}');
+        var rows = [['手机号', '昵称', '等级', '付费套餐', '付费时间', '激活码', '用户ID'].join(',')];
+        Object.values(allUsers).forEach(function(u) {
+            rows.push([
+                u.phone || '',
+                '"' + (u.name || '').replace(/"/g,'""') + '"',
+                u.level || 'free',
+                u.paidPlan || '',
+                u.paidAt ? u.paidAt.slice(0,10) : '',
+                u.activationCode || '',
+                u.id || ''
+            ].join(','));
+        });
+        var csv = '\uFEFF' + rows.join('\n');
+        var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'heshuile-users-' + new Date().toISOString().slice(0,10) + '.csv';
+        a.click();
+        toast('📥 用户数据已导出');
     }
     
     function clearAllStats() {
