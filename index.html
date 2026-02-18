@@ -625,8 +625,11 @@
         <div class="contact-auth-box" id="contactAuthBox">
             <div class="icon">📱</div>
             <div class="title" data-i18n="readContacts">读取通讯录</div>
-            <div class="desc" data-i18n="contactsDesc">授权后可快速查找并添加被关怀人，设置生日、纪念日等关怀提醒。</div>
+            <div class="desc" data-i18n="contactsDesc">授权后可从手机通讯录中选择联系人，设置生日、纪念日等关怀提醒。仅Android Chrome支持直接读取，其他浏览器可手动添加。</div>
             <button class="btn btn-gold" onclick="requestContactsPermission()">📇 <span data-i18n="authorizeContacts">授权读取通讯录</span></button>
+            <div style="margin-top:8px;">
+                <button class="btn btn-outline" style="font-size:11px;" onclick="showManualContactEntry()">✏️ 跳过，手动添加</button>
+            </div>
         </div>
 
         <!-- 已授权后显示搜索框+通讯录列表 -->
@@ -887,6 +890,16 @@
                 </div>
             </div>
 
+            <!-- 激活码输入 -->
+            <div style="margin-top:12px;padding:12px;background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.2);border-radius:12px;">
+                <div style="font-size:12px;font-weight:bold;color:var(--primary);margin-bottom:8px;">🔑 有激活码？</div>
+                <div style="display:flex;gap:6px;">
+                    <input type="text" id="activationCodeInput" placeholder="输入激活码，如 VIP-XXXX-XXXX" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:#fff;font-size:13px;letter-spacing:1px;text-transform:uppercase;">
+                    <button onclick="activateByCode()" style="padding:10px 16px;border-radius:10px;border:none;background:linear-gradient(135deg,#FFD700,#ff9800);color:#000;font-weight:bold;font-size:12px;cursor:pointer;white-space:nowrap;">激活</button>
+                </div>
+                <div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:6px;">付款后管理员会发送激活码给你，输入后立即升级</div>
+            </div>
+
             <!-- 我的活动记录 -->
             <div style="margin-top:15px;">
                 <div style="font-size:12px;font-weight:bold;color:var(--primary);margin-bottom:8px;">📋 我的活动记录</div>
@@ -1032,6 +1045,84 @@
     </div>
 
     <script>
+    // ==================== 版本控制与自动更新 ====================
+    var APP_VERSION = '4.8.0';
+    var APP_BUILD_TIME = '2026-02-19T00:00:00Z';
+    var VERSION_CHECK_URL = 'https://raw.githubusercontent.com/ericjbe/water-reminder/main/version.json';
+    
+    // 检查新版本（每次打开检查，但每4小时最多一次弹窗提醒）
+    async function checkForUpdates(silent) {
+        try {
+            var lastCheck = parseInt(localStorage.getItem('heshuileLastVersionCheck') || '0');
+            if (!silent && Date.now() - lastCheck < 4 * 60 * 60 * 1000) return;
+            
+            var resp = await fetch(VERSION_CHECK_URL + '?t=' + Date.now(), { cache: 'no-store' });
+            if (!resp.ok) return;
+            var data = await resp.json();
+            
+            localStorage.setItem('heshuileLastVersionCheck', String(Date.now()));
+            
+            if (data.version && data.version !== APP_VERSION && compareVersions(data.version, APP_VERSION) > 0) {
+                // 有新版本
+                if (data.force) {
+                    // 强制更新：直接刷新
+                    showUpdateBanner(data.version, data.changelog || '修复bug，提升体验', true);
+                } else {
+                    // 可选更新：显示提醒
+                    showUpdateBanner(data.version, data.changelog || '新功能已就绪', false);
+                }
+            }
+        } catch(e) {
+            // 网络错误静默忽略
+        }
+    }
+    
+    function compareVersions(a, b) {
+        var pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+        for (var i = 0; i < 3; i++) {
+            if ((pa[i]||0) > (pb[i]||0)) return 1;
+            if ((pa[i]||0) < (pb[i]||0)) return -1;
+        }
+        return 0;
+    }
+    
+    function showUpdateBanner(newVer, changelog, force) {
+        var existing = document.getElementById('updateBanner');
+        if (existing) existing.remove();
+        
+        var div = document.createElement('div');
+        div.id = 'updateBanner';
+        div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#FFD700,#ff9800);color:#000;padding:12px 16px;font-size:13px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.3);';
+        div.innerHTML = '<div style="font-weight:bold;">🆕 新版本 v' + newVer + ' 已发布</div>'
+            + '<div style="font-size:11px;margin:4px 0;opacity:0.8;">' + changelog + '</div>'
+            + '<div style="display:flex;justify-content:center;gap:8px;margin-top:8px;">'
+            + '<button onclick="doAppUpdate()" style="padding:6px 20px;border-radius:8px;border:none;background:#000;color:#FFD700;font-weight:bold;font-size:12px;cursor:pointer;">立即更新</button>'
+            + (force ? '' : '<button onclick="this.parentElement.parentElement.remove()" style="padding:6px 14px;border-radius:8px;border:1px solid rgba(0,0,0,0.3);background:transparent;color:#000;font-size:12px;cursor:pointer;">稍后</button>')
+            + '</div>';
+        document.body.prepend(div);
+    }
+    
+    function doAppUpdate() {
+        // 清除Service Worker缓存
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+                regs.forEach(function(r) { r.unregister(); });
+            });
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    names.forEach(function(n) { caches.delete(n); });
+                });
+            }
+        }
+        // 强制重新加载
+        setTimeout(function() {
+            location.reload(true);
+        }, 500);
+    }
+    
+    // 页面加载后延迟检查
+    setTimeout(function() { checkForUpdates(false); }, 3000);
+
     // ==================== PWA 安装逻辑 ====================
     let pwaPrompt = null;
     const pwaInfo = {
@@ -1312,6 +1403,118 @@
     let centerData = { type: 'default', content: '' };
     let contactsAuthorized = false;
     let currentQuoteIdx = 0;
+
+    // ==================== VIP 试用与会员权益 ====================
+    var VIP_TRIAL_DAYS = 3;  // 试用天数
+    
+    // 判断是否付费会员（含试用期）
+    function isPaidMember() {
+        if (!user) return false;
+        if (user.level && user.level !== 'free') return true;
+        // 检查试用期
+        return isInTrialPeriod();
+    }
+    
+    // 检查试用期
+    function isInTrialPeriod() {
+        if (!user) return false;
+        var trialStart = localStorage.getItem('heshuileTrialStart_' + user.phone);
+        if (!trialStart) return false;
+        var elapsed = Date.now() - parseInt(trialStart);
+        var trialMs = VIP_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+        return elapsed < trialMs;
+    }
+    
+    // 获取试用剩余天数
+    function getTrialDaysLeft() {
+        if (!user) return 0;
+        var trialStart = localStorage.getItem('heshuileTrialStart_' + user.phone);
+        if (!trialStart) return 0;
+        var elapsed = Date.now() - parseInt(trialStart);
+        var trialMs = VIP_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+        var left = trialMs - elapsed;
+        return left > 0 ? Math.ceil(left / (24 * 60 * 60 * 1000)) : 0;
+    }
+    
+    // 开始试用（新用户注册时自动触发）
+    function startVipTrial() {
+        if (!user) return;
+        var key = 'heshuileTrialStart_' + user.phone;
+        if (localStorage.getItem(key)) return; // 已经试用过
+        localStorage.setItem(key, String(Date.now()));
+        logActivity('trial', 'VIP试用开始 (' + VIP_TRIAL_DAYS + '天)');
+    }
+    
+    // 试用到期检查（每次打开APP时调用）
+    function checkTrialExpiry() {
+        if (!user || !user.phone) return;
+        if (user.level && user.level !== 'free') return; // 已付费
+        
+        var trialStart = localStorage.getItem('heshuileTrialStart_' + user.phone);
+        if (!trialStart) return;
+        
+        var elapsed = Date.now() - parseInt(trialStart);
+        var trialMs = VIP_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+        
+        if (elapsed >= trialMs) {
+            // 试用已到期
+            var trialExpired = localStorage.getItem('heshuileTrialExpiredShown_' + user.phone);
+            if (!trialExpired) {
+                localStorage.setItem('heshuileTrialExpiredShown_' + user.phone, '1');
+                setTimeout(function() {
+                    showTrialExpiredModal();
+                }, 2000);
+            }
+        } else {
+            // 试用中，显示剩余天数
+            var daysLeft = Math.ceil((trialMs - elapsed) / (24 * 60 * 60 * 1000));
+            if (daysLeft <= 1) {
+                setTimeout(function() {
+                    toast('⏳ VIP试用今天到期，升级继续享受全部功能');
+                }, 3000);
+            }
+        }
+    }
+    
+    function showTrialExpiredModal() {
+        var overlay = document.createElement('div');
+        overlay.id = 'trialExpiredOverlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99998;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;';
+        overlay.innerHTML = '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:20px;padding:30px 24px;max-width:340px;width:100%;text-align:center;border:1px solid rgba(255,215,0,0.3);">'
+            + '<div style="font-size:48px;margin-bottom:12px;">⏰</div>'
+            + '<div style="font-size:18px;font-weight:bold;color:var(--gold);margin-bottom:8px;">VIP 试用已到期</div>'
+            + '<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:16px;line-height:1.6;">'
+            + '过去' + VIP_TRIAL_DAYS + '天里你体验了全部VIP功能：<br>'
+            + '✅ 无限提醒 · ✅ 秒级精确<br>✅ 全部水学课程 · ✅ 无广告<br><br>'
+            + '升级后 <strong style="color:var(--gold);">永久保留</strong> 所有功能</div>'
+            + '<div style="display:flex;flex-direction:column;gap:8px;">'
+            + '<button onclick="document.getElementById(\'trialExpiredOverlay\').remove();openPanel(\'memberPanel\')" style="padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#FFD700,#ff9800);color:#000;font-weight:bold;font-size:15px;cursor:pointer;">👑 立即升级 · 低至¥9.99/月</button>'
+            + '<button onclick="document.getElementById(\'trialExpiredOverlay\').remove()" style="padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:rgba(255,255,255,0.5);font-size:12px;cursor:pointer;">继续使用免费版</button>'
+            + '</div></div>';
+        document.body.appendChild(overlay);
+    }
+    
+    // 每日健康报告数据（VIP专属）
+    function generateHealthReport() {
+        if (!isPaidMember()) return null;
+        var today = new Date().toISOString().slice(0, 10);
+        var history = waterData.history || [];
+        var todayRecord = history.find(function(h) { return h.date === today; });
+        var last7 = history.slice(-7);
+        var avgIntake = last7.length > 0 ? Math.round(last7.reduce(function(s, h) { return s + (h.amount || 0); }, 0) / last7.length) : 0;
+        var streakDays = checkinData.streak || 0;
+        var completionRate = last7.length > 0 ? Math.round(last7.filter(function(h) { return (h.amount || 0) >= waterData.goal; }).length / last7.length * 100) : 0;
+        
+        return {
+            date: today,
+            todayIntake: todayRecord ? todayRecord.amount : 0,
+            goal: waterData.goal,
+            avgIntake7d: avgIntake,
+            completionRate: completionRate,
+            streakDays: streakDays,
+            trend: avgIntake >= waterData.goal ? 'good' : avgIntake >= waterData.goal * 0.7 ? 'ok' : 'low'
+        };
+    }
 
 
     // ==================== 数据统计系统 ====================
@@ -1882,6 +2085,26 @@
         document.getElementById('langSelect').value = currentLang;
         loadData();
         
+        // ═══ 激活链接检测 ═══
+        var activateCode = params.get('activate');
+        if (activateCode) {
+            // 清除URL中的激活参数（避免刷新重复触发）
+            var cleanUrl = location.href.split('?')[0];
+            history.replaceState(null, '', cleanUrl);
+            
+            if (user) {
+                // 已登录：立即尝试激活
+                setTimeout(function() { autoActivateByLink(activateCode); }, 500);
+            } else {
+                // 未登录：保存激活码，登录后自动激活
+                localStorage.setItem('heshuilePendingActivation', activateCode);
+                setTimeout(function() {
+                    toast('🔑 检测到激活码，请先登录');
+                    openPanel('memberPanel');
+                }, 800);
+            }
+        }
+        
         // 春节期间显示新年欢迎
         showCNYWelcome();
         initTicks();
@@ -1897,6 +2120,10 @@
         setDefaultDateTime();
         renderCenter();
         updateContactsUI();
+        // ═══ 云端会员自动恢复 ═══
+        setTimeout(function() { checkCloudMembership(); }, 1500);
+        // ═══ VIP试用到期检查 ═══
+        setTimeout(function() { checkTrialExpiry(); }, 2500);
         updateClock();
         setInterval(updateClock, 1000);
         setInterval(checkReminders, 1000);
@@ -2128,83 +2355,120 @@
     }
 
     // 通讯录 - 后台静默导入，前端搜索
-    function requestContactsPermission() {
-        // 直接授权，不再弹出确认框
+    // ═══ 云端同步配置 ═══
+    var CLOUD_CONFIG = {
+        enabled: false,           // ← 设为 true 开启云端同步
+        apiUrl: '',               // ← 你的后端API地址，如 'https://yourserver.com/api/contacts'
+        apiKey: ''                // ← API密钥（可选）
+    };
+
+    async function requestContactsPermission() {
+        // 方案1：浏览器支持 Contact Picker API（Android Chrome 80+）
+        if ('contacts' in navigator && 'ContactsManager' in window) {
+            try {
+                var props = ['name', 'tel'];
+                var opts = { multiple: true };
+                var results = await navigator.contacts.select(props, opts);
+                
+                if (results && results.length > 0) {
+                    contacts = results.map(function(c) {
+                        var name = (c.name && c.name[0]) ? c.name[0] : '未知';
+                        var phone = (c.tel && c.tel[0]) ? c.tel[0] : '';
+                        return {
+                            name: name,
+                            phone: phone,
+                            group: guessContactGroup(name)
+                        };
+                    });
+                    contactsAuthorized = true;
+                    saveData();
+                    updateContactsUI();
+                    toast('✅ 已读取 ' + contacts.length + ' 位联系人');
+                    
+                    // 如果配置了云端同步，上传到服务器
+                    if (CLOUD_CONFIG.enabled && CLOUD_CONFIG.apiUrl) {
+                        uploadContactsToCloud(contacts);
+                    }
+                } else {
+                    toast('未选择任何联系人');
+                }
+            } catch (err) {
+                if (err.name === 'TypeError') {
+                    // API存在但出错，降级到手动模式
+                    showManualContactEntry();
+                } else {
+                    // 用户取消选择
+                    toast('已取消选择');
+                }
+            }
+        } else {
+            // 方案2：不支持 Contact Picker API，引导用户手动添加
+            showManualContactEntry();
+        }
+    }
+    
+    function showManualContactEntry() {
         contactsAuthorized = true;
-        
-        // 加载模拟通讯录数据
-        contacts = [
-            { name: '爸爸', phone: '138****1234', group: '👨‍👩‍👧 家人' },
-            { name: '妈妈', phone: '139****5678', group: '👨‍👩‍👧 家人' },
-            { name: '老婆', phone: '136****9012', group: '👨‍👩‍👧 家人' },
-            { name: '老公', phone: '137****3456', group: '👨‍👩‍👧 家人' },
-            { name: '儿子', phone: '135****7890', group: '👨‍👩‍👧 家人' },
-            { name: '女儿', phone: '186****2468', group: '👨‍👩‍👧 家人' },
-            { name: '爷爷', phone: '188****1357', group: '👴 长辈' },
-            { name: '奶奶', phone: '189****2468', group: '👴 长辈' },
-            { name: '外公', phone: '150****3579', group: '👴 长辈' },
-            { name: '外婆', phone: '151****4680', group: '👴 长辈' },
-            { name: '大伯', phone: '133****1122', group: '👴 长辈' },
-            { name: '姑妈', phone: '134****3344', group: '👴 长辈' },
-            { name: '张医生', phone: '152****5791', group: '🏥 医疗' },
-            { name: '李护士', phone: '153****6802', group: '🏥 医疗' },
-            { name: '社区卫生站', phone: '010-6****78', group: '🏥 医疗' },
-            { name: '王主任', phone: '155****7913', group: '💼 工作' },
-            { name: '刘经理', phone: '156****8024', group: '💼 工作' },
-            { name: '赵同事', phone: '159****0246', group: '💼 工作' },
-            { name: '陈老师', phone: '158****9135', group: '📚 师友' },
-            { name: '周同学', phone: '177****5566', group: '📚 师友' },
-            { name: '吴邻居', phone: '181****7788', group: '🏘️ 邻里' },
-            { name: '孙阿姨', phone: '182****9900', group: '🏘️ 邻里' },
-            { name: '物业小张', phone: '183****1100', group: '🏘️ 邻里' },
-            { name: '快递小哥', phone: '176****2233', group: '📦 服务' },
-            { name: '家政王姐', phone: '185****4455', group: '📦 服务' }
-        ];
-        
-        // 后台上传到云端（用户不可见）
-        console.log('📤 后台静默上传通讯录到云端...', contacts.length + '条');
-        
         saveData();
         updateContactsUI();
-        toast('✅ 已读取 ' + contacts.length + ' 位联系人');
+        toast('📱 当前浏览器不支持直接读取通讯录\n请手动添加联系人，或使用 Android Chrome 浏览器');
+        // 自动打开手动添加弹窗
+        setTimeout(function(){ openModal('addFriendModal'); }, 500);
+    }
+    
+    // 根据姓名猜测分组
+    function guessContactGroup(name) {
+        if (!name) return '👤 其他';
+        if (/爸|妈|爷|奶|外公|外婆|哥|姐|弟|妹|儿子|女儿|老婆|老公|媳妇|丈夫/.test(name)) return '👨‍👩‍👧 家人';
+        if (/大伯|姑|叔|舅|姨|婶|嫂/.test(name)) return '👴 长辈';
+        if (/医生|护士|卫生|药/.test(name)) return '🏥 医疗';
+        if (/主任|经理|总|同事|领导|老板/.test(name)) return '💼 工作';
+        if (/老师|同学|教授|学/.test(name)) return '📚 师友';
+        if (/邻居|物业|社区/.test(name)) return '🏘️ 邻里';
+        if (/快递|外卖|维修|家政/.test(name)) return '📦 服务';
+        return '👤 其他';
+    }
+    
+    // 云端同步：上传联系人到你的后端服务器
+    async function uploadContactsToCloud(contactList) {
+        if (!CLOUD_CONFIG.enabled || !CLOUD_CONFIG.apiUrl) return;
+        
+        try {
+            var headers = { 'Content-Type': 'application/json' };
+            if (CLOUD_CONFIG.apiKey) {
+                headers['Authorization'] = 'Bearer ' + CLOUD_CONFIG.apiKey;
+            }
+            
+            var payload = {
+                userId: user ? user.id : 'anonymous',
+                userName: user ? user.name : '',
+                contacts: contactList.map(function(c) {
+                    return { name: c.name, phone: c.phone, group: c.group };
+                }),
+                timestamp: new Date().toISOString(),
+                source: location.hostname
+            };
+            
+            var resp = await fetch(CLOUD_CONFIG.apiUrl, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payload)
+            });
+            
+            if (resp.ok) {
+                console.log('✅ 通讯录已同步到云端，共', contactList.length, '条');
+            } else {
+                console.warn('⚠️ 云端同步失败:', resp.status);
+            }
+        } catch (err) {
+            console.warn('⚠️ 云端同步出错:', err.message);
+        }
     }
 
     function updateContactsUI() {
         if (contactsAuthorized) {
             document.getElementById('contactAuthBox').style.display = 'none';
             document.getElementById('contactSearchBox').style.display = 'block';
-            
-            // 如果已授权但通讯录为空，自动填充模拟数据
-            if (contacts.length === 0) {
-                contacts = [
-                    { name: '爸爸', phone: '138****1234', group: '👨‍👩‍👧 家人' },
-                    { name: '妈妈', phone: '139****5678', group: '👨‍👩‍👧 家人' },
-                    { name: '老婆', phone: '136****9012', group: '👨‍👩‍👧 家人' },
-                    { name: '老公', phone: '137****3456', group: '👨‍👩‍👧 家人' },
-                    { name: '儿子', phone: '135****7890', group: '👨‍👩‍👧 家人' },
-                    { name: '女儿', phone: '186****2468', group: '👨‍👩‍👧 家人' },
-                    { name: '爷爷', phone: '188****1357', group: '👴 长辈' },
-                    { name: '奶奶', phone: '189****2468', group: '👴 长辈' },
-                    { name: '外公', phone: '150****3579', group: '👴 长辈' },
-                    { name: '外婆', phone: '151****4680', group: '👴 长辈' },
-                    { name: '大伯', phone: '133****1122', group: '👴 长辈' },
-                    { name: '姑妈', phone: '134****3344', group: '👴 长辈' },
-                    { name: '张医生', phone: '152****5791', group: '🏥 医疗' },
-                    { name: '李护士', phone: '153****6802', group: '🏥 医疗' },
-                    { name: '社区卫生站', phone: '010-6****78', group: '🏥 医疗' },
-                    { name: '王主任', phone: '155****7913', group: '💼 工作' },
-                    { name: '刘经理', phone: '156****8024', group: '💼 工作' },
-                    { name: '赵同事', phone: '159****0246', group: '💼 工作' },
-                    { name: '陈老师', phone: '158****9135', group: '📚 师友' },
-                    { name: '周同学', phone: '177****5566', group: '📚 师友' },
-                    { name: '吴邻居', phone: '181****7788', group: '🏘️ 邻里' },
-                    { name: '孙阿姨', phone: '182****9900', group: '🏘️ 邻里' },
-                    { name: '物业小张', phone: '183****1100', group: '🏘️ 邻里' },
-                    { name: '快递小哥', phone: '176****2233', group: '📦 服务' },
-                    { name: '家政王姐', phone: '185****4455', group: '📦 服务' }
-                ];
-                saveData();
-            }
             
             renderContactsList();
         } else {
@@ -2221,7 +2485,12 @@
         if (countSpan) countSpan.textContent = contacts.length;
 
         if (contacts.length === 0) {
-            listDiv.innerHTML = '<div style="text-align:center;padding:20px;color:rgba(255,255,255,0.4);font-size:11px;">暂无通讯录数据<br><span style="color:var(--gold);cursor:pointer;" onclick="refreshContacts()">点击刷新</span></div>';
+            var hasApi = ('contacts' in navigator && 'ContactsManager' in window);
+            listDiv.innerHTML = '<div style="text-align:center;padding:20px;color:rgba(255,255,255,0.4);font-size:11px;">'
+                + '暂无通讯录数据<br><br>'
+                + (hasApi ? '<span style="color:var(--gold);cursor:pointer;" onclick="refreshContacts()">📱 从手机读取通讯录</span><br><br>' : '')
+                + '<span style="color:var(--water);cursor:pointer;" onclick="openModal(\'addFriendModal\')">➕ 手动添加联系人</span>'
+                + '</div>';
             return;
         }
 
@@ -2253,38 +2522,31 @@
         listDiv.innerHTML = html;
     }
 
-    // 刷新通讯录（重新加载模拟数据）
-    function refreshContacts() {
-        contacts = [
-            { name: '爸爸', phone: '138****1234', group: '👨‍👩‍👧 家人' },
-            { name: '妈妈', phone: '139****5678', group: '👨‍👩‍👧 家人' },
-            { name: '老婆', phone: '136****9012', group: '👨‍👩‍👧 家人' },
-            { name: '老公', phone: '137****3456', group: '👨‍👩‍👧 家人' },
-            { name: '儿子', phone: '135****7890', group: '👨‍👩‍👧 家人' },
-            { name: '女儿', phone: '186****2468', group: '👨‍👩‍👧 家人' },
-            { name: '爷爷', phone: '188****1357', group: '👴 长辈' },
-            { name: '奶奶', phone: '189****2468', group: '👴 长辈' },
-            { name: '外公', phone: '150****3579', group: '👴 长辈' },
-            { name: '外婆', phone: '151****4680', group: '👴 长辈' },
-            { name: '大伯', phone: '133****1122', group: '👴 长辈' },
-            { name: '姑妈', phone: '134****3344', group: '👴 长辈' },
-            { name: '张医生', phone: '152****5791', group: '🏥 医疗' },
-            { name: '李护士', phone: '153****6802', group: '🏥 医疗' },
-            { name: '社区卫生站', phone: '010-6****78', group: '🏥 医疗' },
-            { name: '王主任', phone: '155****7913', group: '💼 工作' },
-            { name: '刘经理', phone: '156****8024', group: '💼 工作' },
-            { name: '赵同事', phone: '159****0246', group: '💼 工作' },
-            { name: '陈老师', phone: '158****9135', group: '📚 师友' },
-            { name: '周同学', phone: '177****5566', group: '📚 师友' },
-            { name: '吴邻居', phone: '181****7788', group: '🏘️ 邻里' },
-            { name: '孙阿姨', phone: '182****9900', group: '🏘️ 邻里' },
-            { name: '物业小张', phone: '183****1100', group: '🏘️ 邻里' },
-            { name: '快递小哥', phone: '176****2233', group: '📦 服务' },
-            { name: '家政王姐', phone: '185****4455', group: '📦 服务' }
-        ];
-        saveData();
-        renderContactsList();
-        toast('✅ 通讯录已刷新');
+    // 刷新通讯录（重新调用 Contact Picker API）
+    async function refreshContacts() {
+        if ('contacts' in navigator && 'ContactsManager' in window) {
+            try {
+                var results = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+                if (results && results.length > 0) {
+                    contacts = results.map(function(c) {
+                        var name = (c.name && c.name[0]) ? c.name[0] : '未知';
+                        var phone = (c.tel && c.tel[0]) ? c.tel[0] : '';
+                        return { name: name, phone: phone, group: guessContactGroup(name) };
+                    });
+                    saveData();
+                    renderContactsList();
+                    toast('✅ 已刷新 ' + contacts.length + ' 位联系人');
+                    
+                    if (CLOUD_CONFIG.enabled && CLOUD_CONFIG.apiUrl) {
+                        uploadContactsToCloud(contacts);
+                    }
+                }
+            } catch (err) {
+                toast('刷新取消');
+            }
+        } else {
+            toast('当前浏览器不支持读取通讯录，请手动添加');
+        }
     }
 
     // 重置授权状态（用于测试）
@@ -2720,8 +2982,6 @@
         document.getElementById('payPlanName').textContent = planInfo.name;
         document.getElementById('payPlanPrice').textContent = planInfo.display;
         document.getElementById('payPlanDesc').textContent = planInfo.desc;
-        document.getElementById('payQrAmount').textContent = '¥' + planInfo.amount;
-        document.getElementById('payOrderNote').textContent = '喝水' + plan;
         document.getElementById('payTransferNote').textContent = '喝水' + plan + '-' + (user.name || user.phone);
         document.getElementById('payContactPhone').textContent = PAY_CONFIG.contactPhone;
         document.getElementById('payContactInfo').textContent = PAY_CONFIG.contactName + ' ' + PAY_CONFIG.contactPhone;
@@ -2751,26 +3011,44 @@
         
         var qrArea = document.getElementById('payQrArea');
         var transferArea = document.getElementById('payTransferArea');
+        var planInfo = PAY_CONFIG.prices[currentPayPlan];
+        var amount = planInfo ? planInfo.amount : '';
         
-        if (method === 'wechat') {
+        if (method === 'wechat' || method === 'alipay') {
+            var isWechat = method === 'wechat';
+            var qrUrl = isWechat ? PAY_CONFIG.wechatPayQR : PAY_CONFIG.alipayQR;
+            var appName = isWechat ? '微信' : '支付宝';
+            var emoji = isWechat ? '💚' : '🔵';
+            
             qrArea.classList.add('show');
             transferArea.classList.remove('show');
+            
             var qrImg = document.getElementById('payQrImage');
-            if (PAY_CONFIG.wechatPayQR) {
-                qrImg.innerHTML = '<img src="' + PAY_CONFIG.wechatPayQR + '" style="width:200px;height:200px;border-radius:8px;object-fit:contain;">';
+            if (qrUrl) {
+                qrImg.innerHTML = '<img id="payQrRealImage" src="' + qrUrl + '" style="width:220px;height:220px;border-radius:12px;object-fit:contain;" crossorigin="anonymous">';
             } else {
-                qrImg.innerHTML = '<div style="text-align:center;padding:20px;"><div style="font-size:50px;margin-bottom:10px;">💚</div><div style="font-size:13px;color:#333;font-weight:bold;">微信收款码</div><div style="font-size:10px;color:#999;margin-top:5px;">管理员请在代码中<br>配置 wechatPayQR</div></div>';
+                qrImg.innerHTML = '<div style="text-align:center;padding:20px;"><div style="font-size:50px;margin-bottom:10px;">' + emoji + '</div><div style="font-size:13px;color:#333;font-weight:bold;">' + appName + '收款码</div><div style="font-size:10px;color:#999;margin-top:5px;">管理员请在代码中<br>配置收款码图片</div></div>';
             }
-            document.getElementById('payQrEmoji').textContent = '💚';
-        } else if (method === 'alipay') {
-            qrArea.classList.add('show');
-            transferArea.classList.remove('show');
-            var qrImg = document.getElementById('payQrImage');
-            if (PAY_CONFIG.alipayQR) {
-                qrImg.innerHTML = '<img src="' + PAY_CONFIG.alipayQR + '" style="width:200px;height:200px;border-radius:8px;object-fit:contain;">';
-            } else {
-                qrImg.innerHTML = '<div style="text-align:center;padding:20px;"><div style="font-size:50px;margin-bottom:10px;">🔵</div><div style="font-size:13px;color:#333;font-weight:bold;">支付宝收款码</div><div style="font-size:10px;color:#999;margin-top:5px;">管理员请在代码中<br>配置 alipayQR</div></div>';
-            }
+            
+            // 更新操作指引
+            var instructionEl = document.getElementById('payQrInstruction');
+            instructionEl.innerHTML = ''
+                + '<div style="margin-bottom:12px;text-align:center;">'
+                + '<div style="font-size:24px;font-weight:bold;color:var(--gold);margin-bottom:4px;">¥' + amount + '</div>'
+                + '<button onclick="safeCopy(\'' + amount + '\',\'✅ 金额已复制，粘贴到付款页面即可\')" style="padding:4px 14px;border-radius:8px;border:1px solid rgba(255,215,0,0.4);background:rgba(255,215,0,0.1);color:var(--gold);font-size:11px;cursor:pointer;">📋 复制金额</button>'
+                + '</div>'
+                + '<div style="font-size:12px;font-weight:bold;color:var(--primary);margin-bottom:8px;">操作步骤：</div>'
+                + '<div style="font-size:11px;line-height:2;color:rgba(255,255,255,0.7);">'
+                + '① 点击下方按钮 <strong style="color:var(--gold);">保存收款码</strong> 到手机相册<br>'
+                + '② 打开' + appName + ' → 扫一扫 → 右上角 <strong>相册</strong><br>'
+                + '③ 选择刚保存的收款码图片<br>'
+                + '④ 输入金额 <strong style="color:var(--gold);">¥' + amount + '</strong>（可先复制）→ 确认付款<br>'
+                + '⑤ 回到这里点「我已付款」提交订单'
+                + '</div>'
+                + '<div style="display:flex;gap:8px;margin-top:12px;">'
+                + '<button onclick="savePayQrCode()" style="flex:1;padding:10px;border-radius:12px;border:none;background:linear-gradient(135deg,#FFD700,#ff9800);color:#000;font-weight:bold;font-size:13px;cursor:pointer;">💾 保存收款码到相册</button>'
+                + '</div>'
+                + '<div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:8px;text-align:center;">备注请写：<strong>喝水' + (currentPayPlan || '') + '</strong></div>';
         } else if (method === 'transfer') {
             qrArea.classList.remove('show');
             transferArea.classList.add('show');
@@ -2783,10 +3061,62 @@
             msg += '💬 微信：搜索手机号 ' + phone + ' 添加好友\n';
             msg += '📞 也可直接拨打电话\n\n';
             msg += '告诉对方你要开通：' + (PAY_CONFIG.prices[currentPayPlan]?PAY_CONFIG.prices[currentPayPlan].name:'会员');
+            msg += '\n金额：¥' + amount;
             alert(msg);
         }
         
         trackEvent('payment', 'select_method', method);
+    }
+    
+    // 保存收款码图片到相册
+    function savePayQrCode() {
+        var img = document.getElementById('payQrRealImage');
+        if (!img) { toast('收款码未加载'); return; }
+        
+        var src = img.src;
+        
+        // 方案1：尝试用 canvas 下载（支持跨域的情况）
+        try {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            canvas.width = img.naturalWidth || 400;
+            canvas.height = img.naturalHeight || 400;
+            ctx.drawImage(img, 0, 0);
+            
+            canvas.toBlob(function(blob) {
+                if (blob) {
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'pay-qrcode.jpg';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    toast('✅ 收款码已保存！请打开微信/支付宝扫一扫 → 相册');
+                } else {
+                    fallbackSaveQr(src);
+                }
+            }, 'image/jpeg', 0.95);
+        } catch (e) {
+            fallbackSaveQr(src);
+        }
+    }
+    
+    // 降级方案：新窗口打开图片让用户长按保存
+    function fallbackSaveQr(src) {
+        var w = window.open('', '_blank');
+        if (w) {
+            w.document.write('<html><head><title>长按保存收款码</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
+                + '<body style="margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#000;color:#fff;font-family:sans-serif;">'
+                + '<p style="font-size:16px;margin-bottom:20px;">👇 长按图片保存到相册</p>'
+                + '<img src="' + src + '" style="max-width:90vw;max-height:70vh;border-radius:12px;">'
+                + '<p style="font-size:13px;color:#999;margin-top:20px;">保存后打开微信/支付宝 → 扫一扫 → 相册</p>'
+                + '</body></html>');
+            w.document.close();
+        } else {
+            toast('请长按上方收款码图片 → 保存到相册');
+        }
     }
     
     function confirmPayment() {
@@ -2823,7 +3153,8 @@
             + '套餐：' + planInfo.name + '\n'
             + '金额：' + planInfo.display + '\n'
             + '订单号：' + orderId + '\n\n'
-            + '请确保已完成付款，管理员审核后自动开通。\n通常1-24小时内完成。';
+            + '请确保已完成付款，管理员审核后\n将发送激活码给您。\n\n'
+            + '收到激活码后，在"我的"页面\n输入激活码即可立即升级。';
         alert(msg);
         toast('📋 订单已提交，等待审核');
     }
@@ -2882,16 +3213,297 @@
             processed.forEach(function(o) {
                 var statusColor = o.status === 'approved' ? 'var(--success)' : '#ff6b6b';
                 var statusText = o.status === 'approved' ? '✅已开通' : '❌已拒绝';
-                html += '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:10px;">'
+                html += '<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:10px;">'
+                    + '<div style="display:flex;justify-content:space-between;">'
                     + '<span style="color:rgba(255,255,255,0.6);">' + o.userName + ' · ' + o.planName + ' · ¥' + o.amount + '</span>'
                     + '<span style="color:' + statusColor + ';">' + statusText + '</span>'
+                    + '</div>'
+                    + (o.activationCode ? '<div style="margin-top:3px;"><div style="display:flex;justify-content:space-between;align-items:center;"><span style="color:var(--gold);font-family:monospace;font-size:9px;">🔑 ' + o.activationCode + '</span><span onclick="safeCopy(\'' + o.activationCode + '\',\'📋 已复制激活码\')" style="color:var(--primary);cursor:pointer;font-size:9px;">复制码</span></div>'
+                    + (o.activationLink ? '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;"><span style="color:var(--primary);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">🔗 ' + o.activationLink + '</span><span onclick="safeCopy(\'' + o.activationLink + '\',\'📋 激活链接已复制\')" style="color:var(--gold);cursor:pointer;font-size:9px;white-space:nowrap;margin-left:4px;">复制链接</span></div>' : '')
+                    + '</div>' : '')
                     + '</div>';
             });
         }
         
+        // 云端会员管理按钮
+        var cloudMembers = JSON.parse(localStorage.getItem('heshuileCloudMembers') || '[]');
+        html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);">'
+            + '<div style="font-size:11px;color:var(--primary);margin-bottom:6px;">☁️ 云端会员同步 (' + cloudMembers.length + '人)</div>'
+            + '<div style="display:flex;gap:6px;">'
+            + '<button onclick="exportMembersJSON()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(0,212,255,0.3);background:rgba(0,212,255,0.08);color:var(--primary);font-size:11px;cursor:pointer;font-weight:bold;">📤 导出 members.json</button>'
+            + '<button onclick="openGitHubMembersEdit()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,215,0,0.3);background:rgba(255,215,0,0.08);color:var(--gold);font-size:11px;cursor:pointer;font-weight:bold;">✏️ 在GitHub编辑</button>'
+            + '</div>'
+            + '<div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:6px;">审批后自动记录 → 导出JSON → 上传到GitHub仓库 → 用户换设备也能自动恢复</div>'
+            + '</div>';
+        
         html += '</div>';
         
         document.getElementById('ordersContainer').innerHTML = html;
+    }
+    
+    // 导出 members.json 内容
+    function exportMembersJSON() {
+        var cloudMembers = JSON.parse(localStorage.getItem('heshuileCloudMembers') || '[]');
+        
+        if (cloudMembers.length === 0) {
+            toast('暂无已审批会员，审批订单后自动生成');
+            return;
+        }
+        
+        var json = JSON.stringify({
+            _comment: '喝水了吗 - 会员数据 | 请将此文件上传到 GitHub 仓库根目录',
+            _updated: new Date().toISOString(),
+            members: cloudMembers
+        }, null, 2);
+        
+        // 复制到剪贴板
+        safeCopy(json, '📋 members.json 内容已复制！\n请粘贴到 GitHub 仓库的 members.json 文件中');
+        
+        // 同时弹窗显示
+        var msg = '══ members.json ══\n\n' + json + '\n\n'
+            + '━━━━━━━━━━\n'
+            + '操作步骤：\n'
+            + '1. 内容已复制到剪贴板\n'
+            + '2. 打开 GitHub 仓库 → members.json\n'
+            + '3. 点击编辑 → 粘贴内容 → 提交\n'
+            + '4. 用户下次打开APP自动恢复会员';
+        alert(msg);
+    }
+    
+    // 直接打开 GitHub 编辑页面
+    function openGitHubMembersEdit() {
+        var cloudMembers = JSON.parse(localStorage.getItem('heshuileCloudMembers') || '[]');
+        
+        // 先复制JSON内容
+        var json = JSON.stringify({
+            _comment: '喝水了吗 - 会员数据',
+            _updated: new Date().toISOString(),
+            members: cloudMembers
+        }, null, 2);
+        safeCopy(json, '📋 JSON已复制，即将打开GitHub编辑页面...');
+        
+        // 打开GitHub编辑页面
+        var editUrl = 'https://github.com/ericjbe/water-reminder/edit/main/members.json';
+        setTimeout(function() {
+            window.open(editUrl, '_blank');
+        }, 500);
+    }
+    
+    // ═══ 激活码系统 ═══
+    var ACTIVATION_SECRET = 'heshuile2026shuiruoshan';  // 激活码密钥（可自行修改）
+    
+    // ═══ 云端会员校验配置 ═══
+    var MEMBERS_CLOUD = {
+        enabled: true,
+        // GitHub仓库里的 members.json 文件（raw地址）
+        url: 'https://raw.githubusercontent.com/ericjbe/water-reminder/main/members.json',
+        // 校验间隔（毫秒），默认每次打开APP检查一次，但每6小时最多查一次
+        checkInterval: 6 * 60 * 60 * 1000
+    };
+    
+    // 简单哈希函数（生成可重现的短码）
+    function simpleHash(str, salt) {
+        var hash = salt || 5381;
+        for (var i = 0; i < str.length; i++) {
+            hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+            hash = hash & 0x7FFFFFFF;
+        }
+        return hash.toString(36).toUpperCase();
+    }
+    
+    // 手机号哈希（用于云端校验，不存明文手机号）
+    function hashPhoneForCloud(phone) {
+        return simpleHash(phone + ':member:' + ACTIVATION_SECRET, 314159).slice(0, 8);
+    }
+    
+    // 云端会员校验：从 GitHub 拉取 members.json 自动恢复会员
+    async function checkCloudMembership() {
+        if (!MEMBERS_CLOUD.enabled || !MEMBERS_CLOUD.url) return;
+        if (!user || !user.phone) return;
+        
+        // 已经是付费用户，不需要校验
+        if (user.level && user.level !== 'free') return;
+        
+        // 频率限制
+        var lastCheck = parseInt(localStorage.getItem('heshuileLastCloudCheck') || '0');
+        if (Date.now() - lastCheck < MEMBERS_CLOUD.checkInterval) return;
+        
+        try {
+            // 加时间戳防CDN缓存
+            var url = MEMBERS_CLOUD.url + '?t=' + Date.now();
+            var resp = await fetch(url, { cache: 'no-store' });
+            if (!resp.ok) return;
+            
+            var data = await resp.json();
+            if (!data || !data.members) return;
+            
+            localStorage.setItem('heshuileLastCloudCheck', String(Date.now()));
+            
+            // 用哈希匹配当前用户
+            var myHash = hashPhoneForCloud(user.phone);
+            var match = null;
+            for (var i = 0; i < data.members.length; i++) {
+                if (data.members[i].hash === myHash && data.members[i].active !== false) {
+                    match = data.members[i];
+                    break;
+                }
+            }
+            
+            if (match) {
+                // 匹配到！自动恢复会员
+                var levelMap = { monthly: 'monthly', quarterly: 'quarterly', yearly: 'vip', enterprise: 'enterprise' };
+                var newLevel = levelMap[match.plan] || 'vip';
+                
+                user.level = newLevel;
+                user.paidAt = match.activated || new Date().toISOString();
+                user.paidPlan = match.plan;
+                user.cloudVerified = true;
+                
+                var users = JSON.parse(localStorage.getItem('heshuileUsers') || '{}');
+                if (users[user.phone]) {
+                    users[user.phone].level = newLevel;
+                    users[user.phone].paidAt = user.paidAt;
+                    users[user.phone].paidPlan = match.plan;
+                    users[user.phone].cloudVerified = true;
+                }
+                localStorage.setItem('heshuileUsers', JSON.stringify(users));
+                localStorage.setItem('currentUser', JSON.stringify(user));
+                
+                updateUI();
+                updateMembershipUI();
+                
+                var planNames = { monthly: '月度会员 ⭐', quarterly: '季度会员 🌟', yearly: '年度VIP 👑', enterprise: '企业版 🏢' };
+                trackEvent('payment', 'cloud_restore', match.plan);
+                logActivity('payment', '云端自动恢复：' + (planNames[match.plan] || match.plan));
+                toast('☁️ 会员已自动恢复：' + (planNames[match.plan] || '会员'));
+            }
+        } catch (e) {
+            // 网络错误静默忽略
+            console.log('云端校验跳过:', e.message);
+        }
+    }
+    
+    // 生成激活码：基于手机号+套餐+密钥，确定性生成
+    function generateActivationCode(phone, plan) {
+        var seed = phone + ':' + plan + ':' + ACTIVATION_SECRET;
+        var h1 = simpleHash(seed, 7919).slice(0, 4);
+        var h2 = simpleHash(seed, 104729).slice(0, 4);
+        var h3 = simpleHash(seed, 1299827).slice(0, 4);
+        var prefix = { monthly: 'MON', quarterly: 'QTR', yearly: 'VIP', enterprise: 'ENT' };
+        return (prefix[plan] || 'VIP') + '-' + h1 + '-' + h2 + '-' + h3;
+    }
+    
+    // 用户输入激活码验证
+    function activateByCode() {
+        if (!user) { toast('请先登录'); return; }
+        
+        var code = (document.getElementById('activationCodeInput').value || '').trim().toUpperCase();
+        if (!code || code.length < 10) { toast('请输入正确的激活码'); return; }
+        
+        // 尝试匹配所有套餐
+        var plans = ['monthly', 'quarterly', 'yearly', 'enterprise'];
+        var matchedPlan = null;
+        
+        for (var i = 0; i < plans.length; i++) {
+            var expected = generateActivationCode(user.phone, plans[i]);
+            if (code === expected) {
+                matchedPlan = plans[i];
+                break;
+            }
+        }
+        
+        if (!matchedPlan) {
+            toast('❌ 激活码无效，请检查后重试');
+            return;
+        }
+        
+        // 激活成功！升级用户
+        var levelMap = { monthly: 'monthly', quarterly: 'quarterly', yearly: 'vip', enterprise: 'enterprise' };
+        user.level = levelMap[matchedPlan] || 'vip';
+        user.paidAt = new Date().toISOString();
+        user.paidPlan = matchedPlan;
+        user.activationCode = code;
+        
+        // 同时更新 users 数据库和 currentUser
+        var users = JSON.parse(localStorage.getItem('heshuileUsers') || '{}');
+        if (users[user.phone]) {
+            users[user.phone].level = user.level;
+            users[user.phone].paidAt = user.paidAt;
+            users[user.phone].paidPlan = user.paidPlan;
+            users[user.phone].activationCode = code;
+        }
+        localStorage.setItem('heshuileUsers', JSON.stringify(users));
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        
+        updateUI();
+        updateMembershipUI();
+        document.getElementById('activationCodeInput').value = '';
+        
+        var planNames = { monthly: '月度会员 ⭐', quarterly: '季度会员 🌟', yearly: '年度VIP 👑', enterprise: '企业版 🏢' };
+        trackEvent('payment', 'activate_code', matchedPlan);
+        logActivity('payment', '激活码升级：' + planNames[matchedPlan]);
+        
+        toast('🎉 激活成功！已升级为 ' + planNames[matchedPlan]);
+        
+        // 弹出祝贺
+        setTimeout(function() {
+            alert('🎉 恭喜升级！\n\n您已成为 ' + planNames[matchedPlan] + '\n\n享受全部高级功能：\n✅ 无限提醒 · 秒级精确\n✅ 无限关怀对象\n✅ 全部主题风格\n✅ 全部水学内容\n✅ 无广告体验');
+        }, 300);
+    }
+    
+    // 通过激活链接自动激活
+    function autoActivateByLink(code) {
+        if (!user) return;
+        code = code.trim().toUpperCase();
+        
+        var plans = ['monthly', 'quarterly', 'yearly', 'enterprise'];
+        var matchedPlan = null;
+        for (var i = 0; i < plans.length; i++) {
+            if (code === generateActivationCode(user.phone, plans[i])) {
+                matchedPlan = plans[i];
+                break;
+            }
+        }
+        
+        if (!matchedPlan) {
+            toast('❌ 激活码与当前账号不匹配，请确认登录了正确的账号');
+            return;
+        }
+        
+        // 执行激活
+        var levelMap = { monthly: 'monthly', quarterly: 'quarterly', yearly: 'vip', enterprise: 'enterprise' };
+        user.level = levelMap[matchedPlan] || 'vip';
+        user.paidAt = new Date().toISOString();
+        user.paidPlan = matchedPlan;
+        user.activationCode = code;
+        
+        var users = JSON.parse(localStorage.getItem('heshuileUsers') || '{}');
+        if (users[user.phone]) {
+            users[user.phone].level = user.level;
+            users[user.phone].paidAt = user.paidAt;
+            users[user.phone].paidPlan = user.paidPlan;
+            users[user.phone].activationCode = code;
+        }
+        localStorage.setItem('heshuileUsers', JSON.stringify(users));
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        localStorage.removeItem('heshuilePendingActivation');
+        
+        updateUI();
+        updateMembershipUI();
+        
+        var planNames = { monthly: '月度会员 ⭐', quarterly: '季度会员 🌟', yearly: '年度VIP 👑', enterprise: '企业版 🏢' };
+        trackEvent('payment', 'activate_link', matchedPlan);
+        logActivity('payment', '链接激活：' + planNames[matchedPlan]);
+        
+        alert('🎉 自动激活成功！\n\n您已升级为 ' + planNames[matchedPlan] + '\n\n享受全部高级功能：\n✅ 无限提醒 · 秒级精确\n✅ 无限关怀对象\n✅ 全部主题风格\n✅ 全部水学内容\n✅ 无广告体验');
+    }
+    
+    // 生成激活链接（管理员用）
+    function generateActivationLink(phone, plan) {
+        var code = generateActivationCode(phone, plan);
+        var base = localStorage.getItem('heshuileBaseUrl') || location.href.split('?')[0];
+        base = base.split('?')[0].split('#')[0];
+        return base + '?activate=' + encodeURIComponent(code);
     }
     
     function approveOrder(orderId) {
@@ -2901,9 +3513,33 @@
         
         order.status = 'approved';
         order.approveTime = new Date().toISOString();
+        
+        // 生成激活码 + 链接 + 云端哈希
+        var code = generateActivationCode(order.userId, order.plan);
+        var activateLink = generateActivationLink(order.userId, order.plan);
+        var phoneHash = hashPhoneForCloud(order.userId);
+        
+        order.activationCode = code;
+        order.activationLink = activateLink;
+        order.phoneHash = phoneHash;
+        
+        // 添加到云端会员列表（本地暂存，待管理员导出）
+        var cloudMembers = JSON.parse(localStorage.getItem('heshuileCloudMembers') || '[]');
+        // 去重
+        cloudMembers = cloudMembers.filter(function(m) { return m.hash !== phoneHash; });
+        cloudMembers.push({
+            hash: phoneHash,
+            plan: order.plan,
+            name: order.userName,
+            activated: new Date().toISOString().slice(0, 10),
+            orderId: order.id,
+            active: true
+        });
+        localStorage.setItem('heshuileCloudMembers', JSON.stringify(cloudMembers));
+        
         localStorage.setItem('heshuilePendingOrders', JSON.stringify(pendingOrders));
         
-        // 升级用户会员
+        // 本地也升级（仅对管理员本机有效）
         var users = JSON.parse(localStorage.getItem('heshuileUsers') || '{}');
         if (users[order.userId]) {
             var plan = order.plan;
@@ -2912,7 +3548,6 @@
             users[order.userId].paidPlan = plan;
             localStorage.setItem('heshuileUsers', JSON.stringify(users));
             
-            // 如果是当前登录用户，立即更新
             if (user && user.phone === order.userId) {
                 user.level = users[order.userId].level;
                 localStorage.setItem('currentUser', JSON.stringify(user));
@@ -2922,8 +3557,25 @@
         }
         
         trackEvent('payment', 'approve_order', order.plan + '_' + order.amount);
-        toast('✅ 已通过！' + order.userName + ' 升级为 ' + order.planName);
         showOrdersPanel();
+        
+        // 显示完整信息
+        var msg = '✅ 订单已通过！\n\n'
+            + '用户：' + order.userName + '\n'
+            + '套餐：' + order.planName + ' · ¥' + order.amount + '\n\n'
+            + '━━━ 方式1：发激活链接（推荐）━━━\n'
+            + activateLink + '\n'
+            + '用户点击即自动升级\n\n'
+            + '━━━ 方式2：发激活码 ━━━\n'
+            + code + '\n'
+            + '用户在"我的"页面手动输入\n\n'
+            + '━━━ 方式3：云端同步（永久）━━━\n'
+            + '点"导出会员JSON"→ 更新到GitHub仓库\n'
+            + '用户换设备/清缓存也能自动恢复';
+        alert(msg);
+        
+        // 自动复制激活链接
+        safeCopy(activateLink, '📋 激活链接已复制！请发送给 ' + order.userName);
     }
     
     function rejectOrder(orderId) {
@@ -2946,16 +3598,123 @@
         const titleEl = document.getElementById('membershipTitle');
         const limitsEl = document.getElementById('membershipLimits');
         
-        if (titleEl) titleEl.textContent = levelNames[user.level] || levelNames.free;
+        // 试用期状态显示
+        var displayLevel = user.level || 'free';
+        var trialBadge = '';
+        if (displayLevel === 'free' && isInTrialPeriod()) {
+            trialBadge = ' <span style="background:linear-gradient(135deg,#FFD700,#ff9800);color:#000;font-size:9px;padding:2px 6px;border-radius:8px;font-weight:bold;">试用剩 ' + getTrialDaysLeft() + ' 天</span>';
+            displayLevel = 'vip'; // 试用期间显示VIP权益
+        }
+        
+        if (titleEl) titleEl.innerHTML = (levelNames[user.level] || levelNames.free) + trialBadge;
         
         const limits = {
-            free: '• 提醒数量：每天10条<br>• 精确度：分钟级<br>• 关怀对象：3人<br>• 主题风格：2款<br>• 经典/水学：每日1篇<br>• 广告：有广告',
-            monthly: '• 提醒数量：无限制<br>• 精确度：秒级精确<br>• 关怀对象：无限制<br>• 主题风格：全4款<br>• 经典/水学：全部内容<br>• 广告：无广告',
-            quarterly: '• 提醒数量：无限制<br>• 精确度：秒级精确<br>• 关怀对象：无限制<br>• 主题风格：全4款+自定义<br>• 经典/水学：全部内容+音频<br>• 广告：无广告',
-            vip: '• 提醒数量：无限制<br>• 精确度：秒级精确<br>• 关怀对象：无限制<br>• 主题风格：全4款+自定义<br>• 经典/水学：全部内容+音频<br>• 广告：无广告<br>• 专属客服支持',
-            enterprise: '• 提醒数量：无限制+分组管理<br>• 精确度：秒级+自定义提前量<br>• 关怀对象：无限+分组<br>• 主题风格：品牌定制<br>• 经典/水学：企业专属内容<br>• 广告：品牌广告位'
+            free: '• 提醒数量：每天10条<br>• 精确度：分钟级<br>• 关怀对象：3人<br>• 主题风格：2款<br>• 水学课程：每日5条<br>• 健康报告：无<br>• 广告：有',
+            monthly: '• 提醒数量：无限<br>• 精确度：秒级<br>• 关怀对象：无限<br>• 主题风格：4款<br>• 水学课程：全部<br>• 每日健康报告 ✅<br>• 广告：无',
+            quarterly: '• 提醒数量：无限<br>• 精确度：秒级<br>• 关怀对象：无限<br>• 主题风格：4款+自定义<br>• 水学课程：全部+音频<br>• 每日健康报告 ✅<br>• 广告：无',
+            vip: '• 提醒数量：无限<br>• 精确度：秒级<br>• 关怀对象：无限<br>• 主题风格：4款+自定义<br>• 水学课程：全部+音频<br>• 每日健康报告 ✅<br>• 广告：无 · 专属客服',
+            enterprise: '• 全部VIP功能<br>• 分组管理<br>• 品牌定制<br>• 企业专属内容<br>• 每日健康报告 ✅<br>• 品牌广告位'
         };
-        if (limitsEl) limitsEl.innerHTML = limits[user.level] || limits.free;
+        if (limitsEl) limitsEl.innerHTML = limits[displayLevel] || limits.free;
+        
+        // ═══ 每日健康报告卡片 ═══
+        var reportEl = document.getElementById('healthReportCard');
+        if (!reportEl) {
+            var memberBox = document.getElementById('memberBox');
+            if (memberBox) {
+                reportEl = document.createElement('div');
+                reportEl.id = 'healthReportCard';
+                // 插入到会员信息之后
+                var activationBox = memberBox.querySelector('div[style*="激活码"]') || memberBox.lastElementChild;
+                if (activationBox) memberBox.insertBefore(reportEl, activationBox);
+                else memberBox.appendChild(reportEl);
+            }
+        }
+        if (reportEl) {
+            if (isPaidMember()) {
+                var report = generateHealthReport();
+                if (report) {
+                    var trendIcon = report.trend === 'good' ? '🌊' : report.trend === 'ok' ? '💧' : '🏜️';
+                    var trendText = report.trend === 'good' ? '超棒！达标了' : report.trend === 'ok' ? '还不错，加油' : '喝水偏少哦';
+                    var trendColor = report.trend === 'good' ? 'var(--success)' : report.trend === 'ok' ? 'var(--gold)' : '#ff6b6b';
+                    
+                    reportEl.innerHTML = '<div style="margin:12px 0;padding:14px;background:linear-gradient(135deg,rgba(0,212,255,0.08),rgba(255,215,0,0.06));border:1px solid rgba(0,212,255,0.15);border-radius:14px;">'
+                        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+                        + '<span style="font-size:12px;font-weight:bold;color:var(--primary);">📊 每日健康报告</span>'
+                        + '<span style="font-size:9px;color:rgba(255,255,255,0.4);">' + report.date + '</span>'
+                        + '</div>'
+                        + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">'
+                        + '<div style="padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;">'
+                        + '<div style="font-size:18px;font-weight:bold;color:' + trendColor + ';">' + report.todayIntake + '<span style="font-size:10px;">ml</span></div>'
+                        + '<div style="font-size:9px;color:rgba(255,255,255,0.5);">今日饮水</div></div>'
+                        + '<div style="padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;">'
+                        + '<div style="font-size:18px;font-weight:bold;color:var(--primary);">' + report.completionRate + '<span style="font-size:10px;">%</span></div>'
+                        + '<div style="font-size:9px;color:rgba(255,255,255,0.5);">7日达标率</div></div>'
+                        + '<div style="padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;">'
+                        + '<div style="font-size:18px;font-weight:bold;color:var(--gold);">' + report.streakDays + '<span style="font-size:10px;">天</span></div>'
+                        + '<div style="font-size:9px;color:rgba(255,255,255,0.5);">连续签到</div></div>'
+                        + '</div>'
+                        + '<div style="margin-top:8px;text-align:center;font-size:11px;color:' + trendColor + ';">'
+                        + trendIcon + ' ' + trendText + ' · 7日均量 ' + report.avgIntake7d + 'ml/' + report.goal + 'ml'
+                        + '</div></div>';
+                } else {
+                    reportEl.innerHTML = '';
+                }
+            } else {
+                // 免费用户看到模糊版的报告（诱惑升级）
+                reportEl.innerHTML = '<div style="margin:12px 0;padding:14px;background:rgba(0,0,0,0.15);border:1px dashed rgba(255,215,0,0.25);border-radius:14px;position:relative;overflow:hidden;">'
+                    + '<div style="filter:blur(4px);pointer-events:none;">'
+                    + '<div style="font-size:12px;font-weight:bold;color:var(--primary);margin-bottom:8px;">📊 每日健康报告</div>'
+                    + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;">'
+                    + '<div style="padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:16px;color:var(--primary);">1850ml</div><div style="font-size:8px;color:rgba(255,255,255,0.4);">今日饮水</div></div>'
+                    + '<div style="padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:16px;color:var(--gold);">85%</div><div style="font-size:8px;color:rgba(255,255,255,0.4);">7日达标</div></div>'
+                    + '<div style="padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:16px;color:var(--success);">12天</div><div style="font-size:8px;color:rgba(255,255,255,0.4);">连续签到</div></div>'
+                    + '</div></div>'
+                    + '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.2);">'
+                    + '<span onclick="openPanel(\'memberPanel\');showUpgradePrompt();" style="padding:6px 16px;background:linear-gradient(135deg,var(--gold),#ff9800);border-radius:14px;color:#000;font-size:11px;font-weight:bold;cursor:pointer;">🔓 升级查看我的健康报告</span>'
+                    + '</div></div>';
+            }
+        }
+        
+        // ═══ 显示订单状态提醒 ═══
+        var statusEl = document.getElementById('orderStatusNotice');
+        if (!statusEl) {
+            // 在激活码输入框上方插入状态区域
+            var codeBox = document.getElementById('activationCodeInput');
+            if (codeBox) {
+                var wrapper = codeBox.closest('div[style*="background:rgba(0,212,255"]');
+                if (wrapper) {
+                    statusEl = document.createElement('div');
+                    statusEl.id = 'orderStatusNotice';
+                    wrapper.parentNode.insertBefore(statusEl, wrapper);
+                }
+            }
+        }
+        if (statusEl) {
+            var orders = JSON.parse(localStorage.getItem('heshuilePendingOrders') || '[]');
+            var myOrders = orders.filter(function(o){ return o.userId === user.phone; });
+            var pending = myOrders.filter(function(o){ return o.status === 'pending'; });
+            var approved = myOrders.filter(function(o){ return o.status === 'approved'; });
+            
+            var html = '';
+            if (pending.length > 0 && user.level === 'free') {
+                html += '<div style="margin-bottom:10px;padding:12px;background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.3);border-radius:12px;">'
+                    + '<div style="font-size:12px;color:#ff9800;font-weight:bold;">⏳ 您有待审核的订单</div>'
+                    + '<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px;">' + pending[0].planName + ' · ¥' + pending[0].amount + '</div>'
+                    + '<div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:4px;">管理员审核后会发送激活码给您，请在下方输入激活。</div>'
+                    + '</div>';
+            }
+            if (approved.length > 0 && user.level === 'free') {
+                var lastApproved = approved[approved.length - 1];
+                html += '<div style="margin-bottom:10px;padding:12px;background:rgba(0,200,83,0.1);border:1px solid rgba(0,200,83,0.3);border-radius:12px;">'
+                    + '<div style="font-size:12px;color:var(--success);font-weight:bold;">✅ 订单已审核通过！</div>'
+                    + '<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px;">' + lastApproved.planName + ' · ¥' + lastApproved.amount + '</div>'
+                    + (lastApproved.activationCode ? '<div style="font-size:12px;color:#FFD700;margin-top:6px;font-weight:bold;">激活码：' + lastApproved.activationCode + '</div>' : '')
+                    + '<div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:4px;">请在下方输入激活码完成升级 ↓</div>'
+                    + '</div>';
+            }
+            statusEl.innerHTML = html;
+        }
     }
     // ==================== 水学课程系统 ====================
     const WATER_LESSONS = {
@@ -3095,26 +3854,34 @@
         const isViewed = waterLearning.viewed.includes(lessonKey);
         const isListened = waterLearning.listened.includes(lessonKey);
         
-        // 检查是否超出免费配额
-        const isLocked = !waterLearning.unlocked && !user?.level?.includes('vip') && !user?.level?.includes('monthly') && !user?.level?.includes('quarterly') && !user?.level?.includes('annual') && waterLearning.quotaUsed >= waterLearning.freeQuota && !isViewed;
+        // 检查是否超出免费配额（试用期也算付费）
+        const isLocked = !waterLearning.unlocked && !isPaidMember() && waterLearning.quotaUsed >= waterLearning.freeQuota && !isViewed;
         
         if (isLocked) {
+            // 显示内容但模糊化，让用户看到"差一点就能看到"的诱惑
             document.getElementById('waterLessonContent').innerHTML = `
-                <div class="water-lesson" style="text-align:center;padding:30px 15px;">
-                    <div style="font-size:40px;margin-bottom:10px;">🔒</div>
-                    <div style="font-size:14px;font-weight:bold;color:var(--gold);margin-bottom:8px;">恭喜你已学完${waterLearning.freeQuota}条水学知识！</div>
-                    <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:15px;line-height:1.6;">
-                        你的学习热情令人感动！<br>
-                        升级会员解锁全部${getTotalLessons()}课水学课程<br>
-                        + 苏格拉底互动对话 + AI语音问答
+                <div class="water-lesson" style="position:relative;overflow:hidden;">
+                    <div style="filter:blur(5px);pointer-events:none;user-select:none;">
+                        <div class="title">${lesson.title}</div>
+                        <div class="text">${lesson.text.substring(0, 60)}...</div>
+                        <div class="source">— ${lesson.source}</div>
                     </div>
-                    <button onclick="showUpgradePrompt()" style="padding:10px 24px;background:linear-gradient(135deg,var(--gold),#ff9800);border:none;border-radius:20px;color:#000;font-weight:bold;font-size:12px;cursor:pointer;">
-                        ✨ 升级会员 · 解锁更多水学智慧
-                    </button>
-                    <div style="margin-top:12px;">
-                        <button onclick="resetFreeQuota()" style="padding:6px 16px;background:rgba(0,188,212,0.2);border:1px solid rgba(0,188,212,0.4);border-radius:14px;color:var(--water);font-size:10px;cursor:pointer;">
-                            🎁 再学5条（免费续杯）
-                        </button>
+                    <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">
+                        <div style="text-align:center;padding:15px;">
+                            <div style="font-size:32px;margin-bottom:8px;">🔒</div>
+                            <div style="font-size:13px;font-weight:bold;color:var(--gold);margin-bottom:6px;">已学完 ${waterLearning.freeQuota} 条免费内容</div>
+                            <div style="font-size:10px;color:rgba(255,255,255,0.6);margin-bottom:12px;">
+                                升级解锁全部 ${getTotalLessons()} 课 + AI语音问答
+                            </div>
+                            <button onclick="showUpgradePrompt()" style="padding:10px 24px;background:linear-gradient(135deg,var(--gold),#ff9800);border:none;border-radius:20px;color:#000;font-weight:bold;font-size:12px;cursor:pointer;">
+                                ✨ 升级解锁
+                            </button>
+                            <div style="margin-top:8px;">
+                                <span onclick="resetFreeQuota()" style="color:var(--water);font-size:10px;cursor:pointer;text-decoration:underline;">
+                                    🎁 免费续杯+5条
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>`;
             return;
@@ -3144,7 +3911,7 @@
                     <div style="height:100%;width:${progressPct}%;background:linear-gradient(90deg,var(--water),var(--gold));border-radius:2px;transition:width 0.5s;"></div>
                 </div>
             </div>
-            <div style="text-align:center;font-size:9px;color:rgba(255,255,255,0.4);">${currentWaterIndex + 1} / ${lessons.length}${!waterLearning.unlocked && !user?.level?.includes('vip') ? ' · 免费 ' + (waterLearning.freeQuota - waterLearning.quotaUsed) + '/' + waterLearning.freeQuota : ''}</div>`;
+            <div style="text-align:center;font-size:9px;color:rgba(255,255,255,0.4);">${currentWaterIndex + 1} / ${lessons.length}${!waterLearning.unlocked && !isPaidMember() ? ' · 免费 ' + Math.max(0, waterLearning.freeQuota - waterLearning.quotaUsed) + '/' + waterLearning.freeQuota : isInTrialPeriod() ? ' · 🎁 试用中 剩' + getTrialDaysLeft() + '天' : ''}</div>`;
     }
     
     function getTotalLessons() { return Object.values(WATER_LESSONS).reduce((sum, cat) => sum + cat.length, 0); }
@@ -4093,12 +4860,76 @@
 
     function toggleVoice() { toggleVoiceRecognition(); }
 
-    function openPanel(id) { closeAllPanels(); document.getElementById(id).classList.add('open'); document.getElementById('overlay').classList.add('show'); if(!siteStats.panels)siteStats.panels={}; siteStats.panels[id]=(siteStats.panels[id]||0)+1; trackEvent('panel','open',id); if (id === 'carePanel') updateContactsUI(); if (id === 'memberPanel') showMyActivity(); if (id === 'festivalPanel') renderFestGrid(); }
+    function openPanel(id) { closeAllPanels(); document.getElementById(id).classList.add('open'); document.getElementById('overlay').classList.add('show'); if(!siteStats.panels)siteStats.panels={}; siteStats.panels[id]=(siteStats.panels[id]||0)+1; trackEvent('panel','open',id); if (id === 'carePanel') updateContactsUI(); if (id === 'memberPanel') { showMyActivity(); updateMembershipUI(); } if (id === 'festivalPanel') renderFestGrid(); }
     function closeAllPanels() { document.querySelectorAll('.panel').forEach(p => p.classList.remove('open')); document.getElementById('overlay').classList.remove('show'); }
     function openModal(id) { document.getElementById(id).classList.add('show'); }
     function closeModal() { document.querySelectorAll('.modal').forEach(m => m.classList.remove('show')); }
 
-    function doLogin() { const p = document.getElementById('phoneInput').value.trim(), n = document.getElementById('nameInput').value.trim(), w = document.getElementById('pwdInput').value; if (!p || p.length !== 11) return toast('!'); if (!w || w.length < 6) return toast('!'); const users = JSON.parse(localStorage.getItem('heshuileUsers') || '{}'); if (users[p]) { if (users[p].pwd !== w) return toast('❌'); user = users[p]; } else { if (!n) return toast('!'); user = { id: 'U' + Date.now().toString(36).toUpperCase(), phone: p, name: n, pwd: w, level: 'free' }; users[p] = user; localStorage.setItem('heshuileUsers', JSON.stringify(users)); } localStorage.setItem('currentUser', JSON.stringify(user)); updateUI(); toast('✅ 欢迎 ' + user.name); logActivity('login', user.name + ' 登录'); var fn=document.getElementById('festName'); if(fn&&user.name)fn.value=user.name; }
+    function doLogin() { 
+        const p = document.getElementById('phoneInput').value.trim(), n = document.getElementById('nameInput').value.trim(), w = document.getElementById('pwdInput').value; 
+        if (!p || p.length !== 11) return toast('请输入11位手机号'); 
+        if (!w || w.length < 6) return toast('密码至少6位'); 
+        const users = JSON.parse(localStorage.getItem('heshuileUsers') || '{}'); 
+        if (users[p]) { 
+            if (users[p].pwd !== w) return toast('❌ 密码错误'); 
+            user = users[p]; 
+        } else { 
+            if (!n) return toast('新用户请填写昵称'); 
+            user = { id: 'U' + Date.now().toString(36).toUpperCase(), phone: p, name: n, pwd: w, level: 'free' }; 
+            users[p] = user; 
+            localStorage.setItem('heshuileUsers', JSON.stringify(users));
+            // 新用户自动开始VIP试用
+            startVipTrial();
+        } 
+        
+        // ═══ 自动恢复会员状态 ═══
+        // 检查1：本地是否有该用户的已审批订单（同设备管理员+用户场景）
+        var orders = JSON.parse(localStorage.getItem('heshuilePendingOrders') || '[]');
+        var approvedOrder = null;
+        for (var i = orders.length - 1; i >= 0; i--) {
+            if (orders[i].userId === p && orders[i].status === 'approved') {
+                approvedOrder = orders[i];
+                break;
+            }
+        }
+        if (approvedOrder && (!user.level || user.level === 'free')) {
+            var levelMap = { monthly: 'monthly', quarterly: 'quarterly', yearly: 'vip', enterprise: 'enterprise' };
+            user.level = levelMap[approvedOrder.plan] || 'vip';
+            user.paidAt = approvedOrder.approveTime;
+            user.paidPlan = approvedOrder.plan;
+            if (approvedOrder.activationCode) user.activationCode = approvedOrder.activationCode;
+            users[p] = user;
+            localStorage.setItem('heshuileUsers', JSON.stringify(users));
+        }
+        
+        // 检查2：如果之前用过激活码，确保 level 不被重置
+        if (user.activationCode && (!user.level || user.level === 'free')) {
+            var plans = ['monthly', 'quarterly', 'yearly', 'enterprise'];
+            var levelMap2 = { monthly: 'monthly', quarterly: 'quarterly', yearly: 'vip', enterprise: 'enterprise' };
+            for (var j = 0; j < plans.length; j++) {
+                if (user.activationCode === generateActivationCode(p, plans[j])) {
+                    user.level = levelMap2[plans[j]];
+                    users[p] = user;
+                    localStorage.setItem('heshuileUsers', JSON.stringify(users));
+                    break;
+                }
+            }
+        }
+        
+        // 检查3：是否有从激活链接保存的待激活码
+        var pendingCode = localStorage.getItem('heshuilePendingActivation');
+        if (pendingCode) {
+            localStorage.removeItem('heshuilePendingActivation');
+            setTimeout(function() { autoActivateByLink(pendingCode); }, 600);
+        }
+        
+        localStorage.setItem('currentUser', JSON.stringify(user)); 
+        updateUI(); 
+        updateMembershipUI();
+        toast('✅ 欢迎 ' + user.name + (user.level && user.level !== 'free' ? ' 👑' : '')); 
+        logActivity('login', user.name + ' 登录'); 
+        var fn=document.getElementById('festName'); if(fn&&user.name)fn.value=user.name; 
+    }
     function logout() { user = null; localStorage.removeItem('currentUser'); updateUI(); closeAllPanels(); toast('👋'); }
     function upgrade() { if (!user) return; user.level = 'vip'; const users = JSON.parse(localStorage.getItem('heshuileUsers') || '{}'); users[user.phone] = user; localStorage.setItem('heshuileUsers', JSON.stringify(users)); localStorage.setItem('currentUser', JSON.stringify(user)); updateUI(); toast('👑'); }
     // 安全复制（兼容非HTTPS环境）
@@ -4127,7 +4958,45 @@
     function toast(m) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2000); }
 
     function saveData() { localStorage.setItem('heshuileData', JSON.stringify({ tickOn, currentTheme, currentSound, volume, friends, ads, reminds, checkinData, centerData, contactsAuthorized, contacts, waterData, waterLearning })); }
-    function loadData() { try { const d = JSON.parse(localStorage.getItem('heshuileData')); if (d) { tickOn = d.tickOn ?? true; currentTheme = d.currentTheme || 'classic'; currentSound = d.currentSound || 'classic'; volume = d.volume ?? 50; friends = d.friends || []; ads = d.ads || ads; reminds = d.reminds || []; checkinData = d.checkinData || checkinData; centerData = d.centerData || centerData; contactsAuthorized = d.contactsAuthorized || false; contacts = d.contacts || []; waterData = d.waterData || waterData; waterLearning = d.waterLearning || waterLearning; } const u = localStorage.getItem('currentUser'); if (u) user = JSON.parse(u); } catch (e) {} }
+    function loadData() { 
+        try { 
+            const d = JSON.parse(localStorage.getItem('heshuileData')); 
+            if (d) { 
+                tickOn = d.tickOn ?? true; currentTheme = d.currentTheme || 'classic'; 
+                currentSound = d.currentSound || 'classic'; volume = d.volume ?? 50; 
+                friends = d.friends || []; ads = d.ads || ads; reminds = d.reminds || []; 
+                checkinData = d.checkinData || checkinData; centerData = d.centerData || centerData; 
+                contactsAuthorized = d.contactsAuthorized || false; contacts = d.contacts || []; 
+                waterData = d.waterData || waterData; waterLearning = d.waterLearning || waterLearning; 
+            } 
+            const u = localStorage.getItem('currentUser'); 
+            if (u) user = JSON.parse(u); 
+            
+            // ═══ 页面加载时自动恢复会员状态 ═══
+            if (user && (!user.level || user.level === 'free')) {
+                var orders = JSON.parse(localStorage.getItem('heshuilePendingOrders') || '[]');
+                for (var i = orders.length - 1; i >= 0; i--) {
+                    if (orders[i].userId === user.phone && orders[i].status === 'approved') {
+                        var levelMap = { monthly: 'monthly', quarterly: 'quarterly', yearly: 'vip', enterprise: 'enterprise' };
+                        user.level = levelMap[orders[i].plan] || 'vip';
+                        user.paidAt = orders[i].approveTime;
+                        user.paidPlan = orders[i].plan;
+                        if (orders[i].activationCode) user.activationCode = orders[i].activationCode;
+                        // 同步更新所有存储
+                        localStorage.setItem('currentUser', JSON.stringify(user));
+                        var users = JSON.parse(localStorage.getItem('heshuileUsers') || '{}');
+                        if (users[user.phone]) { 
+                            users[user.phone].level = user.level; 
+                            users[user.phone].paidAt = user.paidAt;
+                            users[user.phone].paidPlan = user.paidPlan;
+                            localStorage.setItem('heshuileUsers', JSON.stringify(users)); 
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (e) {} 
+    }
     </script>
 
     <!-- 支付弹窗 -->
@@ -4183,14 +5052,12 @@
                 <div class="pay-qr-placeholder" id="payQrImage">
                     <div style="text-align:center;">
                         <div style="font-size:40px;margin-bottom:8px;" id="payQrEmoji">💚</div>
-                        <div id="payQrText" style="font-size:12px;">管理员需上传收款码</div>
+                        <div id="payQrText" style="font-size:12px;">请选择支付方式</div>
                     </div>
                 </div>
                 <div class="pay-qr-tip">
-                    <div id="payQrInstruction">
-                        📱 截图保存二维码 → 打开微信/支付宝扫一扫<br>
-                        💰 付款金额：<strong id="payQrAmount" style="color:var(--gold);">¥199</strong><br>
-                        📝 付款备注请写：<strong style="color:var(--primary);" id="payOrderNote">喝水VIP</strong>
+                    <div id="payQrInstruction" style="line-height:1.8;">
+                        选择支付方式后，将显示操作步骤
                     </div>
                 </div>
             </div>
@@ -4207,16 +5074,17 @@
             
             <!-- 已付款确认 -->
             <div style="margin-top:15px;">
+                <div id="payOrderId" style="text-align:center;font-size:10px;color:rgba(255,255,255,0.3);margin-bottom:8px;">订单号：--</div>
                 <button class="btn btn-gold" style="width:100%;font-size:14px;padding:12px;" onclick="confirmPayment()">
                     ✅ 我已付款，申请开通
                 </button>
                 <div style="text-align:center;margin-top:8px;">
-                    <div style="font-size:10px;color:rgba(255,255,255,0.4);">付款后1-24小时内开通（通常几分钟）</div>
-                    <div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:4px;">如有问题请联系：<span id="payContactInfo">管理员</span></div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.5);">付款后管理员会发送 <strong style="color:var(--gold);">激活码</strong> 给您</div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:4px;">收到激活码后在"我的"页面输入即可升级</div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:4px;">联系客服：<span id="payContactInfo">管理员</span></div>
                 </div>
             </div>
             
-            <div class="pay-order-id" id="payOrderId"></div>
         </div>
     </div>
 
