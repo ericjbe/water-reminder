@@ -1,0 +1,7 @@
+{
+  "version": "4.8.0",
+  "build": "2026-02-19T00:00:00Z",
+  "changelog": "新增激活码系统、云端会员同步、通讯录真实API",
+  "force": false,
+  "minVersion": "4.0.0"
+}
